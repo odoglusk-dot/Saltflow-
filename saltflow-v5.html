@@ -1,0 +1,1529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SaltFlow — Salt Delivered to Your Door</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy: #0d1b2a;
+    --deep: #1b2e44;
+    --teal: #00b4d8;
+    --light-teal: #90e0ef;
+    --cream: #f4f1eb;
+    --gold: #c9a84c;
+    --white: #ffffff;
+    --text-light: #8a9db5;
+    --green: #4caf82;
+    --red: #e57373;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--navy); color: var(--cream); overflow-x: hidden; }
+
+  /* NAV */
+  nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; padding: 1.2rem 4rem; background: rgba(13,27,42,0.9); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(0,180,216,0.15); }
+  .logo { font-family: 'Playfair Display', serif; font-size: 1.6rem; font-weight: 900; color: var(--teal); letter-spacing: -0.02em; cursor: pointer; }
+  .logo span { color: var(--cream); }
+  .nav-right { display: flex; align-items: center; gap: 1.5rem; }
+  .nav-phone { color: var(--teal); font-weight: 600; font-size: 1rem; text-decoration: none; }
+  .nav-phone:hover { color: var(--light-teal); }
+  .nav-cta { background: var(--teal); color: var(--navy); padding: 0.55rem 1.4rem; border-radius: 2rem; font-weight: 700; font-size: 0.9rem; text-decoration: none; transition: background 0.2s; border: none; cursor: pointer; }
+  .nav-cta:hover { background: var(--light-teal); }
+  .nav-owner { background: none; border: 1px solid rgba(255,255,255,0.2); color: var(--text-light); padding: 0.5rem 1rem; border-radius: 2rem; font-size: 0.8rem; cursor: pointer; transition: all 0.2s; }
+  .nav-owner:hover { border-color: var(--gold); color: var(--gold); }
+
+  @keyframes fadeUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes pulse { 0%,100%{transform:translateY(-50%) scale(1)} 50%{transform:translateY(-50%) scale(1.05)} }
+  @keyframes rippleOut { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  /* HERO */
+  .hero { min-height: 100vh; display: flex; align-items: center; padding: 8rem 4rem 4rem; position: relative; overflow: hidden; }
+  .hero-bg { position: absolute; inset: 0; z-index: 0; background: radial-gradient(ellipse 70% 60% at 80% 50%, rgba(0,180,216,0.12) 0%, transparent 70%), radial-gradient(ellipse 40% 40% at 10% 80%, rgba(201,168,76,0.07) 0%, transparent 60%), var(--navy); }
+  .ripple { position: absolute; right: -5%; top: 50%; transform: translateY(-50%); width: 580px; height: 580px; border-radius: 50%; z-index: 0; background: radial-gradient(circle, rgba(0,180,216,0.08) 0%, transparent 70%); animation: pulse 6s ease-in-out infinite; }
+  .ripple::before, .ripple::after { content: ''; position: absolute; inset: -40px; border-radius: 50%; border: 1px solid rgba(0,180,216,0.12); animation: rippleOut 6s ease-in-out infinite; }
+  .ripple::after { inset: -80px; animation-delay: 1s; }
+  .hero-content { position: relative; z-index: 1; max-width: 680px; }
+  .hero-badge { display: inline-flex; align-items: center; gap: 0.5rem; background: rgba(0,180,216,0.1); border: 1px solid rgba(0,180,216,0.3); color: var(--teal); padding: 0.4rem 1rem; border-radius: 2rem; font-size: 0.8rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 1.5rem; animation: fadeUp 0.6s ease both; }
+  .hero h1 { font-family: 'Playfair Display', serif; font-size: clamp(3rem, 6vw, 5rem); font-weight: 900; line-height: 1.05; margin-bottom: 1.5rem; animation: fadeUp 0.6s 0.1s ease both; }
+  .hero h1 em { font-style: italic; color: var(--teal); }
+  .hero p { font-size: 1.1rem; color: var(--text-light); line-height: 1.7; margin-bottom: 2.5rem; font-weight: 300; animation: fadeUp 0.6s 0.2s ease both; }
+  .hero-btns { display: flex; gap: 1rem; flex-wrap: wrap; animation: fadeUp 0.6s 0.3s ease both; }
+  .btn-primary { background: var(--teal); color: var(--navy); padding: 0.9rem 2.2rem; border-radius: 3rem; font-weight: 700; font-size: 1rem; text-decoration: none; transition: transform 0.2s, box-shadow 0.2s; box-shadow: 0 0 30px rgba(0,180,216,0.35); cursor: pointer; border: none; }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 0 45px rgba(0,180,216,0.5); }
+  .btn-ghost { border: 1px solid rgba(244,241,235,0.25); color: var(--cream); padding: 0.9rem 2.2rem; border-radius: 3rem; font-weight: 500; font-size: 1rem; text-decoration: none; transition: border-color 0.2s, color 0.2s; }
+  .btn-ghost:hover { border-color: var(--teal); color: var(--teal); }
+  .hero-stats { display: flex; gap: 3rem; margin-top: 4rem; animation: fadeUp 0.6s 0.4s ease both; flex-wrap: wrap; }
+  .stat-num { font-family: 'Playfair Display', serif; font-size: 2.2rem; font-weight: 700; color: var(--white); line-height: 1; }
+  .stat-label { font-size: 0.8rem; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 0.3rem; }
+
+  /* VALUE STRIP */
+  .value-strip { background: var(--teal); padding: 1.1rem 4rem; display: flex; align-items: center; justify-content: center; gap: 3rem; flex-wrap: wrap; }
+  .value-strip span { color: var(--navy); font-weight: 700; font-size: 0.88rem; }
+
+  /* SECTIONS */
+  section { padding: 6rem 4rem; }
+  .section-label { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--teal); margin-bottom: 0.8rem; }
+  .section-title { font-family: 'Playfair Display', serif; font-size: clamp(2rem, 4vw, 3rem); font-weight: 700; line-height: 1.15; margin-bottom: 1rem; }
+  .section-subtitle { color: var(--text-light); font-size: 1rem; line-height: 1.7; max-width: 560px; }
+
+  /* HOW IT WORKS */
+  .how-it-works { background: var(--deep); }
+  .how-header { text-align: center; margin-bottom: 4rem; }
+  .how-header .section-subtitle { margin: 0 auto; }
+  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr)); gap: 2rem; max-width: 1000px; margin: 0 auto; }
+  .step { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 1.2rem; padding: 2rem; transition: border-color 0.3s, transform 0.3s; }
+  .step:hover { border-color: rgba(0,180,216,0.35); transform: translateY(-4px); }
+  .step-num { font-family: 'Playfair Display', serif; font-size: 3rem; font-weight: 900; color: rgba(0,180,216,0.18); line-height: 1; margin-bottom: 1rem; }
+  .step h3 { font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--white); }
+  .step p { font-size: 0.88rem; color: var(--text-light); line-height: 1.6; }
+
+  /* PRICING */
+  .pricing { background: var(--navy); }
+  .pricing-header { text-align: center; margin-bottom: 1rem; }
+  .fee-explainer { display: flex; align-items: center; justify-content: center; gap: 1rem; margin-bottom: 3rem; flex-wrap: wrap; }
+  .fee-pill { padding: 0.55rem 1.2rem; border-radius: 2rem; font-size: 0.88rem; font-weight: 700; }
+  .fee-pill.salt { background: rgba(0,180,216,0.12); border: 1px solid rgba(0,180,216,0.3); color: var(--teal); }
+  .fee-pill.delivery { background: rgba(201,168,76,0.12); border: 1px solid rgba(201,168,76,0.3); color: var(--gold); }
+  .fee-pill.plus { background: none; color: var(--text-light); font-size: 1.2rem; }
+  .plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px,1fr)); gap: 1.5rem; max-width: 950px; margin: 0 auto; }
+  .plan { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 1.5rem; padding: 2.5rem; position: relative; transition: transform 0.3s; }
+  .plan:hover { transform: translateY(-5px); }
+  .plan.featured { border-color: var(--teal); background: linear-gradient(135deg, rgba(0,180,216,0.1), rgba(0,180,216,0.03)); }
+  .plan-badge { position: absolute; top: -14px; left: 50%; transform: translateX(-50%); background: var(--teal); color: var(--navy); font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 0.3rem 1rem; border-radius: 2rem; white-space: nowrap; }
+  .plan-name { font-size: 0.8rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-light); margin-bottom: 0.8rem; }
+  .price-breakdown { background: rgba(255,255,255,0.04); border-radius: 0.8rem; padding: 1rem; margin-bottom: 1rem; }
+  .price-line { display: flex; justify-content: space-between; font-size: 0.88rem; padding: 0.25rem 0; }
+  .price-line .plabel { color: var(--text-light); }
+  .price-line .pval-salt { color: var(--teal); font-weight: 600; }
+  .price-line .pval-delivery { color: var(--gold); font-weight: 600; }
+  .price-divider { border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 0.5rem 0; }
+  .price-total-row { display: flex; justify-content: space-between; align-items: baseline; }
+  .price-total-label { font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-light); }
+  .price-total-val { font-family: 'Playfair Display', serif; font-size: 2rem; font-weight: 700; color: var(--white); }
+  .price-total-val sub { font-size: 0.9rem; color: var(--text-light); font-family: 'DM Sans', sans-serif; }
+  .plan-desc { font-size: 0.88rem; color: var(--text-light); margin-bottom: 1.5rem; line-height: 1.5; }
+  .plan-includes { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--teal); margin-bottom: 0.7rem; }
+  .plan ul { list-style: none; margin-bottom: 1.8rem; }
+  .plan ul li { font-size: 0.88rem; color: var(--cream); padding: 0.4rem 0; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; align-items: center; gap: 0.6rem; }
+  .plan ul li::before { content: '✓'; color: var(--teal); font-weight: 700; flex-shrink: 0; }
+  .plan-cta { display: block; text-align: center; text-decoration: none; padding: 0.85rem; border-radius: 2rem; font-weight: 600; font-size: 0.95rem; background: rgba(255,255,255,0.08); color: var(--cream); border: 1px solid rgba(255,255,255,0.15); transition: all 0.2s; cursor: pointer; }
+  .plan.featured .plan-cta { background: var(--teal); color: var(--navy); border-color: var(--teal); box-shadow: 0 0 30px rgba(0,180,216,0.3); }
+  .plan-cta:hover { opacity: 0.85; transform: translateY(-1px); }
+  .pricing-note { text-align: center; margin-top: 2rem; font-size: 0.85rem; color: var(--text-light); }
+  .pricing-note strong { color: var(--cream); }
+
+  /* WHY */
+  .why { background: var(--deep); }
+  .why-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px,1fr)); gap: 1.2rem; max-width: 1000px; margin: 3rem auto 0; }
+  .why-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 1.2rem; padding: 1.8rem; display: flex; gap: 1.2rem; align-items: flex-start; transition: border-color 0.3s; }
+  .why-card:hover { border-color: rgba(0,180,216,0.3); }
+  .why-icon { font-size: 1.8rem; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: rgba(0,180,216,0.1); border-radius: 0.8rem; flex-shrink: 0; }
+  .why-card h3 { font-size: 1rem; font-weight: 600; margin-bottom: 0.4rem; color: var(--white); }
+  .why-card p { font-size: 0.88rem; color: var(--text-light); line-height: 1.6; }
+
+  /* PHONE CTA */
+  .phone-cta { background: linear-gradient(135deg, rgba(0,180,216,0.15), rgba(0,180,216,0.04)); border-top: 1px solid rgba(0,180,216,0.2); border-bottom: 1px solid rgba(0,180,216,0.2); text-align: center; padding: 5rem 4rem; }
+  .phone-cta h2 { font-family: 'Playfair Display', serif; font-size: clamp(1.8rem, 3.5vw, 2.8rem); margin-bottom: 1rem; }
+  .phone-cta p { color: var(--text-light); margin-bottom: 2rem; }
+  .big-phone { display: inline-flex; align-items: center; gap: 0.8rem; font-family: 'Playfair Display', serif; font-size: clamp(2rem, 5vw, 3rem); font-weight: 700; color: var(--teal); text-decoration: none; transition: color 0.2s; }
+  .big-phone:hover { color: var(--light-teal); }
+  .phone-sub { margin-top: 1rem; font-size: 0.88rem; color: var(--text-light); }
+
+  /* FOOTER */
+  footer { background: #080f17; padding: 2.5rem 4rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; }
+  .footer-logo { font-family: 'Playfair Display', serif; font-size: 1.3rem; font-weight: 900; color: var(--teal); }
+  footer p { font-size: 0.82rem; color: var(--text-light); }
+  footer a { color: var(--teal); text-decoration: none; }
+
+  /* ══════════════════════════════════════════
+     SCHEDULING MODAL
+  ══════════════════════════════════════════ */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(8,15,23,0.92); z-index: 999; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity 0.3s; padding: 1rem; }
+  .modal-overlay.open { opacity: 1; pointer-events: all; }
+  .modal { background: var(--deep); border: 1px solid rgba(0,180,216,0.3); border-radius: 1.5rem; padding: 2.5rem; width: 100%; max-width: 500px; position: relative; transform: translateY(20px); transition: transform 0.3s; max-height: 90vh; overflow-y: auto; }
+  .modal-overlay.open .modal { transform: translateY(0); }
+  .modal-close { position: absolute; top: 1.2rem; right: 1.5rem; background: none; border: none; color: var(--text-light); font-size: 1.5rem; cursor: pointer; line-height: 1; z-index: 1; }
+  .modal h2 { font-family: 'Playfair Display', serif; font-size: 1.7rem; margin-bottom: 0.4rem; }
+  .modal-sub { color: var(--text-light); font-size: 0.88rem; margin-bottom: 1.5rem; }
+
+  /* progress steps */
+  .progress-bar { display: flex; gap: 0.4rem; margin-bottom: 2rem; }
+  .progress-step { flex: 1; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.1); transition: background 0.3s; }
+  .progress-step.active { background: var(--teal); }
+
+  .form-step { display: none; }
+  .form-step.active { display: block; }
+
+  .form-group { margin-bottom: 1.1rem; }
+  .form-group label { display: block; font-size: 0.78rem; font-weight: 600; color: var(--text-light); margin-bottom: 0.4rem; text-transform: uppercase; letter-spacing: 0.06em; }
+  .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 0.75rem 1rem; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); border-radius: 0.6rem; color: var(--cream); font-family: 'DM Sans', sans-serif; font-size: 0.95rem; transition: border-color 0.2s; }
+  .form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: var(--teal); }
+  .form-group select option { background: var(--deep); }
+  .form-group textarea { resize: vertical; min-height: 70px; }
+
+  /* calendar picker */
+  .calendar-label { font-size: 0.78rem; font-weight: 600; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.8rem; display: block; }
+  .mini-calendar { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 0.8rem; overflow: hidden; margin-bottom: 1rem; }
+  .cal-header { display: flex; align-items: center; justify-content: space-between; padding: 0.8rem 1rem; border-bottom: 1px solid rgba(255,255,255,0.08); }
+  .cal-header span { font-weight: 600; font-size: 0.95rem; }
+  .cal-nav { background: none; border: none; color: var(--teal); font-size: 1.2rem; cursor: pointer; padding: 0.2rem 0.5rem; border-radius: 0.4rem; transition: background 0.2s; }
+  .cal-nav:hover { background: rgba(0,180,216,0.1); }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; padding: 0.5rem; }
+  .cal-day-label { text-align: center; font-size: 0.72rem; color: var(--text-light); font-weight: 600; padding: 0.3rem 0; }
+  .cal-day { text-align: center; padding: 0.5rem 0.2rem; font-size: 0.85rem; cursor: pointer; border-radius: 0.4rem; transition: all 0.15s; color: var(--cream); }
+  .cal-day:hover:not(.disabled):not(.empty) { background: rgba(0,180,216,0.2); }
+  .cal-day.selected { background: var(--teal); color: var(--navy); font-weight: 700; }
+  .cal-day.disabled { color: rgba(255,255,255,0.15); cursor: not-allowed; }
+  .cal-day.empty { cursor: default; }
+  .cal-day.today { border: 1px solid rgba(0,180,216,0.4); }
+
+  /* time slots */
+  .time-slots { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 1rem; }
+  .time-slot { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 0.6rem; padding: 0.6rem; text-align: center; cursor: pointer; font-size: 0.85rem; transition: all 0.2s; }
+  .time-slot:hover { border-color: var(--teal); color: var(--teal); }
+  .time-slot.selected { background: rgba(0,180,216,0.15); border-color: var(--teal); color: var(--teal); font-weight: 600; }
+
+  /* order summary inside modal */
+  .order-summary { background: rgba(255,255,255,0.04); border-radius: 0.8rem; padding: 1rem; margin-bottom: 1.2rem; }
+  .order-row { display: flex; justify-content: space-between; font-size: 0.88rem; padding: 0.3rem 0; }
+  .order-row .olabel { color: var(--text-light); }
+  .order-row .oval { color: var(--cream); }
+  .order-divider { border: none; border-top: 1px solid rgba(255,255,255,0.08); margin: 0.5rem 0; }
+  .order-row.total .olabel { font-weight: 700; color: var(--cream); }
+  .order-row.total .oval { font-weight: 700; color: var(--teal); font-size: 1rem; }
+
+  .modal-btn-row { display: flex; gap: 0.8rem; margin-top: 1rem; }
+  .btn-back { flex: 1; padding: 0.85rem; border-radius: 2rem; background: rgba(255,255,255,0.06); color: var(--cream); border: 1px solid rgba(255,255,255,0.12); font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: all 0.2s; }
+  .btn-back:hover { background: rgba(255,255,255,0.1); }
+  .btn-next { flex: 2; padding: 0.85rem; border-radius: 2rem; background: var(--teal); color: var(--navy); border: none; font-weight: 700; font-size: 0.95rem; cursor: pointer; transition: opacity 0.2s; }
+  .btn-next:hover { opacity: 0.88; }
+
+  /* fill-up toggle */
+  .fillup-toggle { background: rgba(76,175,130,0.07); border: 1px solid rgba(76,175,130,0.25); border-radius: 0.8rem; padding: 1rem 1.2rem; margin-bottom: 1.1rem; cursor: pointer; transition: border-color 0.2s, background 0.2s; }
+  .fillup-toggle:hover { border-color: rgba(76,175,130,0.5); }
+  .fillup-toggle.checked { background: rgba(76,175,130,0.13); border-color: var(--green); }
+  .fillup-top { display: flex; align-items: center; gap: 0.8rem; }
+  .fillup-checkbox { width: 20px; height: 20px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.25); background: rgba(255,255,255,0.05); flex-shrink: 0; display: flex; align-items: center; justify-content: center; transition: all 0.2s; font-size: 0.75rem; }
+  .fillup-toggle.checked .fillup-checkbox { background: var(--green); border-color: var(--green); }
+  .fillup-title { font-weight: 700; font-size: 0.95rem; color: var(--cream); }
+  .fillup-title span { color: var(--green); }
+  .fillup-desc { font-size: 0.82rem; color: var(--text-light); margin-top: 0.4rem; line-height: 1.5; padding-left: 28px; }
+
+  /* success screen */
+  .success-screen { display: none; text-align: center; padding: 1.5rem 0; }
+  .success-screen .big-icon { font-size: 3.5rem; margin-bottom: 1rem; }
+  .success-screen h3 { font-family: 'Playfair Display', serif; font-size: 1.6rem; margin-bottom: 0.6rem; }
+  .success-screen p { color: var(--text-light); font-size: 0.9rem; line-height: 1.6; }
+  .confirm-box { background: rgba(0,180,216,0.08); border: 1px solid rgba(0,180,216,0.2); border-radius: 0.8rem; padding: 1rem; margin: 1rem 0; text-align: left; font-size: 0.88rem; }
+  .confirm-box div { padding: 0.25rem 0; color: var(--cream); }
+  .confirm-box span { color: var(--text-light); }
+
+  /* ══════════════════════════════════════════
+     OWNER DASHBOARD
+  ══════════════════════════════════════════ */
+  .dashboard-overlay { position: fixed; inset: 0; background: var(--navy); z-index: 500; display: none; flex-direction: column; overflow-y: auto; }
+  .dashboard-overlay.open { display: flex; }
+  .dash-header { background: var(--deep); border-bottom: 1px solid rgba(0,180,216,0.15); padding: 1.2rem 3rem; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+  .dash-title { font-family: 'Playfair Display', serif; font-size: 1.4rem; font-weight: 700; color: var(--teal); }
+  .dash-close { background: none; border: 1px solid rgba(255,255,255,0.15); color: var(--cream); padding: 0.5rem 1rem; border-radius: 2rem; cursor: pointer; font-size: 0.85rem; transition: all 0.2s; }
+  .dash-close:hover { border-color: var(--red); color: var(--red); }
+  .dash-body { padding: 2.5rem 3rem; flex: 1; }
+  .dash-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px,1fr)); gap: 1rem; margin-bottom: 2.5rem; }
+  .dash-stat { background: var(--deep); border: 1px solid rgba(255,255,255,0.07); border-radius: 1rem; padding: 1.5rem; text-align: center; }
+  .dash-stat-num { font-family: 'Playfair Display', serif; font-size: 2rem; font-weight: 700; color: var(--teal); }
+  .dash-stat-label { font-size: 0.78rem; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 0.3rem; }
+  .dash-section-title { font-size: 0.8rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-light); margin-bottom: 1rem; }
+
+  /* filter bar */
+  .dash-filters { display: flex; gap: 0.6rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+  .filter-btn { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--text-light); padding: 0.4rem 1rem; border-radius: 2rem; font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+  .filter-btn:hover, .filter-btn.active { background: rgba(0,180,216,0.15); border-color: var(--teal); color: var(--teal); }
+
+  /* bookings table */
+  .bookings-table { width: 100%; border-collapse: collapse; }
+  .bookings-table th { padding: 0.7rem 1rem; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-light); text-align: left; border-bottom: 1px solid rgba(255,255,255,0.08); }
+  .bookings-table td { padding: 0.85rem 1rem; font-size: 0.88rem; color: var(--cream); border-bottom: 1px solid rgba(255,255,255,0.04); vertical-align: middle; }
+  .bookings-table tr:hover td { background: rgba(255,255,255,0.02); }
+  .status-badge { display: inline-block; padding: 0.25rem 0.7rem; border-radius: 1rem; font-size: 0.75rem; font-weight: 700; }
+  .status-badge.pending { background: rgba(201,168,76,0.15); color: var(--gold); }
+  .status-badge.confirmed { background: rgba(76,175,130,0.15); color: var(--green); }
+  .status-badge.delivered { background: rgba(0,180,216,0.15); color: var(--teal); }
+  .dash-action-btn { background: none; border: 1px solid rgba(255,255,255,0.12); color: var(--text-light); padding: 0.3rem 0.7rem; border-radius: 0.5rem; font-size: 0.78rem; cursor: pointer; transition: all 0.2s; margin-right: 0.3rem; }
+  .dash-action-btn:hover { border-color: var(--teal); color: var(--teal); }
+  .dash-action-btn.del:hover { border-color: var(--red); color: var(--red); }
+  .empty-state { text-align: center; padding: 4rem 2rem; color: var(--text-light); }
+  .empty-state .big { font-size: 3rem; margin-bottom: 1rem; }
+
+  /* login modal for dashboard */
+  .login-modal { background: var(--deep); border: 1px solid rgba(201,168,76,0.3); border-radius: 1.2rem; padding: 2.5rem; width: 90%; max-width: 380px; position: relative; }
+  .login-modal h2 { font-family: 'Playfair Display', serif; font-size: 1.5rem; margin-bottom: 0.4rem; color: var(--gold); }
+  .login-modal p { color: var(--text-light); font-size: 0.85rem; margin-bottom: 1.5rem; }
+
+  /* ONE-TIME ORDER section */
+  .onetime { background: var(--navy); border-top: 1px solid rgba(255,255,255,0.06); }
+  .onetime-card { max-width: 700px; margin: 0 auto; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 1.5rem; padding: 2.5rem; display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; align-items: center; }
+  .onetime-card h3 { font-family: 'Playfair Display', serif; font-size: 1.6rem; font-weight: 700; margin-bottom: 0.8rem; }
+  .onetime-card p { color: var(--text-light); font-size: 0.92rem; line-height: 1.6; margin-bottom: 1.2rem; }
+  .onetime-price { font-family: 'Playfair Display', serif; font-size: 1.1rem; color: var(--cream); margin-bottom: 1.5rem; }
+  .onetime-price span { color: var(--teal); font-weight: 700; }
+  .onetime-visual { text-align: center; }
+  .onetime-visual .big-num { font-family: 'Playfair Display', serif; font-size: 4rem; font-weight: 900; color: var(--teal); line-height: 1; }
+  .onetime-visual .big-label { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-light); margin-top: 0.3rem; }
+  .bag-counter { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem; }
+  .bag-btn { width: 36px; height: 36px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.05); color: var(--cream); font-size: 1.2rem; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+  .bag-btn:hover { border-color: var(--teal); color: var(--teal); }
+  .bag-count { font-family: 'Playfair Display', serif; font-size: 2rem; font-weight: 700; min-width: 2rem; text-align: center; }
+  .bag-label { font-size: 0.85rem; color: var(--text-light); }
+
+  /* TIP selector in modal */
+  .tip-section { margin: 1rem 0; }
+  .tip-label { font-size: 0.78rem; font-weight: 600; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.6rem; display: block; }
+  .tip-options { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+  .tip-btn { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 0.6rem; padding: 0.5rem 0.9rem; font-size: 0.85rem; cursor: pointer; transition: all 0.2s; color: var(--cream); }
+  .tip-btn:hover { border-color: var(--gold); color: var(--gold); }
+  .tip-btn.selected { background: rgba(201,168,76,0.15); border-color: var(--gold); color: var(--gold); font-weight: 700; }
+
+  /* dashboard chart */
+  .dash-chart-wrap { background: var(--deep); border: 1px solid rgba(255,255,255,0.07); border-radius: 1rem; padding: 1.5rem; margin-bottom: 2rem; }
+  .dash-chart-title { font-size: 0.78rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-light); margin-bottom: 1.2rem; }
+  .chart-bars { display: flex; align-items: flex-end; gap: 6px; height: 80px; }
+  .chart-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .chart-bar { width: 100%; background: rgba(0,180,216,0.3); border-radius: 3px 3px 0 0; transition: background 0.2s; min-height: 4px; cursor: default; position: relative; }
+  .chart-bar:hover { background: var(--teal); }
+  .chart-bar-label { font-size: 0.65rem; color: var(--text-light); white-space: nowrap; }
+  .chart-bar-val { font-size: 0.7rem; color: var(--teal); font-weight: 700; }
+
+  /* route view */
+  .route-view { background: var(--deep); border: 1px solid rgba(255,255,255,0.07); border-radius: 1rem; padding: 1.5rem; margin-bottom: 2rem; display: none; }
+  .route-view.active { display: block; }
+  .route-day { margin-bottom: 1.5rem; }
+  .route-day-header { font-size: 0.8rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gold); padding-bottom: 0.5rem; border-bottom: 1px solid rgba(255,255,255,0.07); margin-bottom: 0.8rem; display: flex; justify-content: space-between; }
+  .route-stop { display: flex; align-items: flex-start; gap: 0.8rem; padding: 0.6rem 0; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 0.85rem; }
+  .route-stop-num { width: 22px; height: 22px; border-radius: 50%; background: rgba(0,180,216,0.15); color: var(--teal); font-size: 0.72rem; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; }
+  .route-stop-info { flex: 1; }
+  .route-stop-name { font-weight: 600; color: var(--cream); }
+  .route-stop-detail { font-size: 0.78rem; color: var(--text-light); margin-top: 0.2rem; }
+
+  /* owner notes */
+  .owner-note-input { width: 100%; padding: 0.5rem 0.8rem; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 0.5rem; color: var(--cream); font-family: 'DM Sans', sans-serif; font-size: 0.82rem; resize: none; min-height: 52px; transition: border-color 0.2s; }
+  .owner-note-input:focus { outline: none; border-color: var(--gold); }
+  .save-note-btn { background: none; border: 1px solid rgba(201,168,76,0.3); color: var(--gold); padding: 0.25rem 0.7rem; border-radius: 0.4rem; font-size: 0.75rem; cursor: pointer; margin-top: 0.3rem; transition: all 0.2s; }
+  .save-note-btn:hover { background: rgba(201,168,76,0.1); }
+
+  /* dashboard view toggle */
+  .dash-view-toggle { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; }
+  .view-btn { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); color: var(--text-light); padding: 0.45rem 1rem; border-radius: 2rem; font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+  .view-btn.active { background: rgba(0,180,216,0.15); border-color: var(--teal); color: var(--teal); }
+  .export-btn { margin-left: auto; background: rgba(76,175,130,0.1); border: 1px solid rgba(76,175,130,0.3); color: var(--green); padding: 0.45rem 1rem; border-radius: 2rem; font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+  .export-btn:hover { background: rgba(76,175,130,0.2); }
+
+  @media(max-width:768px) {
+    nav { padding: 1rem 1.2rem; }
+    .nav-right { gap: 0.8rem; }
+    section, .hero { padding: 4rem 1.5rem; }
+    .value-strip { padding: 1rem 1.5rem; gap: 1rem; }
+    footer { flex-direction: column; text-align: center; }
+    .dash-body { padding: 1.5rem; }
+    .dash-header { padding: 1rem 1.5rem; }
+    .bookings-table { font-size: 0.8rem; }
+    .bookings-table th, .bookings-table td { padding: 0.6rem 0.5rem; }
+    .onetime-card { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="logo" onclick="window.scrollTo({top:0,behavior:'smooth'})">Salt<span>Flow</span></div>
+  <div class="nav-right">
+    <a href="tel:3853682193" class="nav-phone">📞 385-368-2193</a>
+    <button class="nav-owner" onclick="openDashboard()">Owner Login</button>
+    <button class="nav-cta" onclick="openModal(null)">Book Delivery</button>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero" id="home">
+  <div class="hero-bg"></div>
+  <div class="ripple"></div>
+  <div class="hero-content">
+    <div class="hero-badge">💧 Monthly Doorstep Delivery</div>
+    <h1>Water Softener Salt,<br><em>Dropped at Your Door.</em></h1>
+    <p>$10 per bag + $22 flat delivery fee. No contracts, no surprises. Pick your day, we show up — you load, we drive.</p>
+    <div class="hero-btns">
+      <button class="btn-primary" onclick="openModal(null)">Schedule My Delivery</button>
+      <a href="tel:3853682193" class="btn-ghost">📞 Call or Text</a>
+    </div>
+    <div class="hero-stats">
+      <div><div class="stat-num">$10</div><div class="stat-label">Per Bag</div></div>
+      <div><div class="stat-num">$22</div><div class="stat-label">Flat Delivery</div></div>
+      <div><div class="stat-num">0</div><div class="stat-label">Contracts</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- VALUE STRIP -->
+<div class="value-strip">
+  <span>✅ $10/bag · $22 flat delivery</span>
+  <span>✅ Pick your delivery day</span>
+  <span>✅ Text before every drop</span>
+  <span>✅ Cancel anytime</span>
+</div>
+
+<!-- HOW IT WORKS -->
+<section class="how-it-works" id="how">
+  <div class="how-header">
+    <div class="section-label">Super Simple</div>
+    <h2 class="section-title">How It Works</h2>
+    <p class="section-subtitle">Book in minutes, salt shows up monthly. That's the whole thing.</p>
+  </div>
+  <div class="steps">
+    <div class="step"><div class="step-num">01</div><h3>Choose Your Bags</h3><p>Pick 1, 2, or 3 bags. $10 each plus a flat $22 delivery fee — same trip, so more bags = better deal.</p></div>
+    <div class="step"><div class="step-num">02</div><h3>Pick a Delivery Day</h3><p>Use the scheduler to choose your preferred day of the month. We'll lock you into that slot every month.</p></div>
+    <div class="step"><div class="step-num">03</div><h3>We Show Up</h3><p>You'll get a text the morning of. We drop the bags at your door — you load your brine tank and you're done.</p></div>
+  </div>
+</section>
+
+<!-- PRICING -->
+<section class="pricing" id="pricing">
+  <div class="pricing-header">
+    <div class="section-label">Transparent Pricing</div>
+    <h2 class="section-title">You Pay for Salt + Delivery. That's It.</h2>
+  </div>
+  <div class="fee-explainer">
+    <div class="fee-pill salt">💧 $10 per bag of salt</div>
+    <div class="fee-pill plus">+</div>
+    <div class="fee-pill delivery">🚚 $22 flat delivery fee</div>
+  </div>
+  <div class="plans">
+
+    <div class="plan">
+      <div class="plan-name">Single</div>
+      <div class="price-breakdown">
+        <div class="price-line"><span class="plabel">1 × 40 lb bag</span><span class="pval-salt">$10</span></div>
+        <div class="price-line"><span class="plabel">Delivery fee</span><span class="pval-delivery">$22</span></div>
+        <hr class="price-divider">
+        <div class="price-total-row"><span class="price-total-label">Monthly total</span><span class="price-total-val">$32<sub>/mo</sub></span></div>
+      </div>
+      <div class="plan-desc">Best for 1–2 person homes or light softener use.</div>
+      <div class="plan-includes">Includes</div>
+      <ul>
+        <li>1 × 40 lb bag of pellet salt</li>
+        <li>Doorstep delivery</li>
+        <li>Text before arrival</li>
+        <li>Skip or cancel anytime</li>
+      </ul>
+      <button class="plan-cta" onclick="openModal('single')">Schedule — $32/mo</button>
+    </div>
+
+    <div class="plan featured">
+      <div class="plan-badge">Best Value</div>
+      <div class="plan-name">Double</div>
+      <div class="price-breakdown">
+        <div class="price-line"><span class="plabel">2 × 40 lb bags</span><span class="pval-salt">$20</span></div>
+        <div class="price-line"><span class="plabel">Delivery fee</span><span class="pval-delivery">$22</span></div>
+        <hr class="price-divider">
+        <div class="price-total-row"><span class="price-total-label">Monthly total</span><span class="price-total-val">$42<sub>/mo</sub></span></div>
+      </div>
+      <div class="plan-desc">The sweet spot — same delivery, double the salt.</div>
+      <div class="plan-includes">Includes</div>
+      <ul>
+        <li>2 × 40 lb bags (80 lb)</li>
+        <li>Doorstep delivery</li>
+        <li>Text before arrival</li>
+        <li>Priority scheduling</li>
+        <li>Skip or cancel anytime</li>
+      </ul>
+      <button class="plan-cta" onclick="openModal('double')">Schedule — $42/mo</button>
+    </div>
+
+    <div class="plan">
+      <div class="plan-name">Triple</div>
+      <div class="price-breakdown">
+        <div class="price-line"><span class="plabel">3 × 40 lb bags</span><span class="pval-salt">$30</span></div>
+        <div class="price-line"><span class="plabel">Delivery fee</span><span class="pval-delivery">$22</span></div>
+        <hr class="price-divider">
+        <div class="price-total-row"><span class="price-total-label">Monthly total</span><span class="price-total-val">$52<sub>/mo</sub></span></div>
+      </div>
+      <div class="plan-desc">Large families or high-use systems. Best per-bag value.</div>
+      <div class="plan-includes">Includes</div>
+      <ul>
+        <li>3 × 40 lb bags (120 lb)</li>
+        <li>Doorstep delivery</li>
+        <li>Text before arrival</li>
+        <li>Priority scheduling</li>
+        <li>Skip or cancel anytime</li>
+      </ul>
+      <button class="plan-cta" onclick="openModal('triple')">Schedule — $52/mo</button>
+    </div>
+
+  </div>
+  <div class="pricing-note">One-time extra bag? <strong>$10 + $22 delivery.</strong> · Questions? <a href="tel:3853682193" style="color:var(--teal);">385-368-2193</a></div>
+</section>
+
+<!-- WHY -->
+<section class="why" id="why">
+  <div style="max-width:1000px;margin:0 auto;">
+    <div class="section-label">Why SaltFlow</div>
+    <h2 class="section-title">Small Price, Big Convenience</h2>
+    <div class="why-grid">
+      <div class="why-card"><div class="why-icon">🚗</div><div><h3>Skip the Store Run</h3><p>No cart, no trunk loading, no trip. Salt shows up at your door — you carry it 20 feet.</p></div></div>
+      <div class="why-card"><div class="why-icon">📅</div><div><h3>You Pick the Day</h3><p>Schedule your preferred delivery date right when you sign up. We lock it in monthly.</p></div></div>
+      <div class="why-card"><div class="why-icon">🪣</div><div><h3>We'll Fill It For You</h3><p>Opt in during signup and we'll load the salt straight into your brine tank — zero effort on your end. Just unlock the door.</p></div></div>
+      <div class="why-card"><div class="why-icon">💎</div><div><h3>Premium Pellet Salt</h3><p>High-purity evaporated pellets — cleaner dissolve, less bridging, long softener life.</p></div></div>
+      <div class="why-card"><div class="why-icon">🔓</div><div><h3>Zero Lock-In</h3><p>Skip, pause, or cancel with a quick text. No contracts, no fees, no fine print.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ONE-TIME ORDER -->
+<section class="onetime" id="onetime">
+  <div style="text-align:center;margin-bottom:2.5rem;">
+    <div class="section-label">No Subscription Needed</div>
+    <h2 class="section-title">Just Need a One-Time Delivery?</h2>
+    <p class="section-subtitle" style="margin:0 auto;">No commitment. Order as many bags as you need, delivered once. Same $10/bag + $22 delivery.</p>
+  </div>
+  <div class="onetime-card">
+    <div>
+      <h3>One-Time Order</h3>
+      <p>Perfect if you're not ready to subscribe or just need a top-up. Pick your bags, pick a date, done.</p>
+      <div class="onetime-price">
+        <span id="otSaltPrice">$10</span> salt + <span>$22</span> delivery = <span id="otTotal">$32</span> total
+      </div>
+      <div class="bag-counter">
+        <button class="bag-btn" onclick="changeOtBags(-1)">−</button>
+        <div>
+          <div class="bag-count" id="otBagCount">1</div>
+          <div class="bag-label">bag(s)</div>
+        </div>
+        <button class="bag-btn" onclick="changeOtBags(1)">+</button>
+      </div>
+      <button class="btn-primary" onclick="openOneTimeModal()">Order Now</button>
+    </div>
+    <div class="onetime-visual">
+      <div class="big-num" id="otLbs">40</div>
+      <div class="big-label">lbs of salt</div>
+      <div style="margin-top:1.5rem;font-size:0.82rem;color:var(--text-light);line-height:1.6;">Premium pellet salt<br>Delivered to your door<br>You load, we drive</div>
+    </div>
+  </div>
+</section>
+
+<!-- PHONE CTA -->
+<section class="phone-cta">
+  <div class="section-label">Ready?</div>
+  <h2>Book Online or Give Us a Call</h2>
+  <p>Takes 2 minutes to schedule. We'll confirm by text.</p>
+  <a href="tel:3853682193" class="big-phone">📞 385-368-2193</a>
+  <p class="phone-sub">Or <button onclick="openModal(null)" style="background:none;border:none;color:var(--teal);cursor:pointer;font-size:inherit;text-decoration:underline;">schedule online above</button> · Local deliveries · Text-friendly</p>
+</section>
+
+<!-- ABOUT US -->
+<section style="background:var(--navy);padding:5rem 4rem;border-top:1px solid rgba(255,255,255,0.06);">
+  <div style="max-width:860px;margin:0 auto;display:grid;grid-template-columns:1fr 2fr;gap:4rem;align-items:center;">
+    <div style="text-align:center;">
+      <div style="font-size:5rem;margin-bottom:1rem;">🙏</div>
+      <div style="font-family:'Playfair Display',serif;font-size:1.8rem;font-weight:900;color:var(--teal);line-height:1.1;">Built by<br>Local Kids</div>
+      <div style="margin-top:1rem;display:flex;justify-content:center;gap:0.5rem;flex-wrap:wrap;">
+        <span style="background:rgba(0,180,216,0.1);border:1px solid rgba(0,180,216,0.25);color:var(--teal);padding:0.3rem 0.8rem;border-radius:2rem;font-size:0.75rem;font-weight:700;">⛪ Mission Fund</span>
+        <span style="background:rgba(201,168,76,0.1);border:1px solid rgba(201,168,76,0.25);color:var(--gold);padding:0.3rem 0.8rem;border-radius:2rem;font-size:0.75rem;font-weight:700;">🎓 College Bound</span>
+      </div>
+    </div>
+    <div>
+      <div style="font-size:0.75rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--teal);margin-bottom:0.8rem;">Our Story</div>
+      <h2 style="font-family:'Playfair Display',serif;font-size:clamp(1.6rem,3vw,2.2rem);font-weight:700;line-height:1.2;margin-bottom:1.2rem;">We're Just a Couple of High School Kids With a Truck and a Goal</h2>
+      <p style="color:var(--text-light);font-size:0.95rem;line-height:1.8;margin-bottom:1rem;">SaltFlow started simple — we noticed our neighbors hauling heavy salt bags every month and thought, <em style="color:var(--cream);">we could do that for them.</em> So we did. What began as a way to earn extra money turned into a real local business we're genuinely proud of.</p>
+      <p style="color:var(--text-light);font-size:0.95rem;line-height:1.8;margin-bottom:1rem;">We're saving up for two big things: our church missions and college tuition. Every delivery you book goes directly toward those goals. You get soft water delivered to your door — we get one step closer to where we're headed.</p>
+      <p style="color:var(--text-light);font-size:0.95rem;line-height:1.8;">We take this seriously. We show up when we say we will, we treat your home with respect, and we genuinely appreciate every single customer. <em style="color:var(--cream);">Thank you for supporting local kids chasing something bigger.</em></p>
+      <div style="margin-top:1.8rem;padding:1.2rem 1.5rem;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:1rem;font-size:0.88rem;color:var(--text-light);">
+        📞 Questions? Reach us directly at <a href="tel:3853682193" style="color:var(--teal);font-weight:700;">385-368-2193</a> — you'll actually talk to us, not a call center.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-logo">SaltFlow</div>
+  <p>📞 <a href="tel:3853682193">385-368-2193</a></p>
+  <p>© 2026 SaltFlow · $10/bag + $22 delivery · Cancel anytime</p>
+</footer>
+
+<!-- ══════════════════════════════════════════
+     SCHEDULING MODAL
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="bookingOverlay" onclick="handleOverlayClick(event,'bookingOverlay')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <button class="modal-close" onclick="closeModal('bookingOverlay')">×</button>
+
+    <!-- Progress Bar -->
+    <div class="progress-bar">
+      <div class="progress-step active" id="prog1"></div>
+      <div class="progress-step" id="prog2"></div>
+      <div class="progress-step" id="prog3"></div>
+    </div>
+
+    <!-- STEP 1: Your Info -->
+    <div class="form-step active" id="step1">
+      <h2>Book Your Delivery</h2>
+      <p class="modal-sub">Step 1 of 3 — Your details</p>
+      <div class="form-group"><label>Full Name</label><input type="text" id="s1name" placeholder="Jane Smith"></div>
+      <div class="form-group"><label>Phone Number</label><input type="tel" id="s1phone" placeholder="(555) 000-0000"></div>
+      <div class="form-group"><label>Delivery Address</label><input type="text" id="s1addr" placeholder="123 Maple St, Your City"></div>
+      <div class="form-group">
+        <label>Plan</label>
+        <select id="s1plan">
+          <option value="single">Single — 1 bag · $32/mo</option>
+          <option value="double" selected>Double — 2 bags · $42/mo</option>
+          <option value="triple">Triple — 3 bags · $52/mo</option>
+        </select>
+      </div>
+      <div class="fillup-toggle" id="fillupToggle" onclick="toggleFillup()">
+        <div class="fillup-top">
+          <div class="fillup-checkbox" id="fillupCheck"></div>
+          <div class="fillup-title">🪣 Load it into my softener for me <span>(Free!)</span></div>
+        </div>
+        <div class="fillup-desc">Check this if you'd like us to carry the bags inside and pour the salt directly into your brine tank. Just leave the area accessible on delivery day — we handle the rest.</div>
+      </div>
+      <div class="modal-btn-row">
+        <button class="btn-next" style="flex:1" onclick="goStep(2)">Next: Pick a Day →</button>
+      </div>
+    </div>
+
+    <!-- STEP 2: Pick Date & Time -->
+    <div class="form-step" id="step2">
+      <h2>Pick Your Day</h2>
+      <p class="modal-sub">Step 2 of 3 — Choose your recurring delivery date</p>
+      <span class="calendar-label">Select a delivery date</span>
+      <div class="mini-calendar">
+        <div class="cal-header">
+          <button class="cal-nav" onclick="changeMonth(-1)">‹</button>
+          <span id="calMonthLabel"></span>
+          <button class="cal-nav" onclick="changeMonth(1)">›</button>
+        </div>
+        <div class="cal-grid" id="calGrid"></div>
+      </div>
+      <span class="calendar-label">Preferred arrival window</span>
+      <div class="time-slots">
+        <div class="time-slot" onclick="selectTime(this,'8am–10am')">8am – 10am</div>
+        <div class="time-slot" onclick="selectTime(this,'10am–12pm')">10am – 12pm</div>
+        <div class="time-slot" onclick="selectTime(this,'12pm–2pm')">12pm – 2pm</div>
+        <div class="time-slot" onclick="selectTime(this,'2pm–4pm')">2pm – 4pm</div>
+      </div>
+      <div class="form-group"><label>Notes (gate code, instructions, etc.)</label><textarea id="s2notes" placeholder="e.g. Leave bags by the garage door. Gate code: 1234"></textarea></div>
+      <div class="modal-btn-row">
+        <button class="btn-back" onclick="goStep(1)">← Back</button>
+        <button class="btn-next" onclick="goStep(3)">Review Order →</button>
+      </div>
+    </div>
+
+    <!-- STEP 3: Review & Confirm -->
+    <div class="form-step" id="step3">
+      <h2>Review & Confirm</h2>
+      <p class="modal-sub">Step 3 of 3 — Everything look right?</p>
+      <div class="order-summary" id="orderSummary"></div>
+      <div class="modal-btn-row">
+        <button class="btn-back" onclick="goStep(2)">← Back</button>
+        <button class="btn-next" onclick="confirmBooking()">✓ Confirm Booking</button>
+      </div>
+    </div>
+
+    <!-- Success -->
+    <div class="success-screen" id="bookingSuccess">
+      <div class="big-icon">💧</div>
+      <h3>You're Booked!</h3>
+      <div class="confirm-box" id="confirmBox"></div>
+      <p>We'll text <strong>385-368-2193</strong> to confirm within a few hours. See you on delivery day!</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     ONE-TIME ORDER MODAL
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="oneTimeOverlay" onclick="handleOverlayClick(event,'oneTimeOverlay')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <button class="modal-close" onclick="closeModal('oneTimeOverlay')">×</button>
+    <div id="otForm">
+      <h2>One-Time Order</h2>
+      <p class="modal-sub">No subscription — just one delivery.</p>
+      <div class="form-group"><label>Full Name</label><input type="text" id="ot1name" placeholder="Jane Smith"></div>
+      <div class="form-group"><label>Phone Number</label><input type="tel" id="ot1phone" placeholder="(555) 000-0000"></div>
+      <div class="form-group"><label>Delivery Address</label><input type="text" id="ot1addr" placeholder="123 Maple St, Your City"></div>
+      <div class="form-group">
+        <label>Number of Bags</label>
+        <select id="ot1bags">
+          <option value="1">1 bag — $10 salt + $22 delivery = $32</option>
+          <option value="2">2 bags — $20 salt + $22 delivery = $42</option>
+          <option value="3">3 bags — $30 salt + $22 delivery = $52</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Preferred Date</label><input type="date" id="ot1date" min=""></div>
+      <div class="fillup-toggle" id="otFillupToggle" onclick="toggleOtFillup()">
+        <div class="fillup-top">
+          <div class="fillup-checkbox" id="otFillupCheck"></div>
+          <div class="fillup-title">🪣 Load it into my softener for me <span>(Free!)</span></div>
+        </div>
+        <div class="fillup-desc">We carry the bags inside and pour into your brine tank — just leave the area accessible.</div>
+      </div>
+      <div class="tip-section">
+        <span class="tip-label">💛 Leave a tip? (totally optional)</span>
+        <div class="tip-options">
+          <div class="tip-btn" onclick="selectTip(this,0)">No tip</div>
+          <div class="tip-btn" onclick="selectTip(this,2)">$2</div>
+          <div class="tip-btn" onclick="selectTip(this,5)">$5</div>
+          <div class="tip-btn" onclick="selectTip(this,10)">$10</div>
+          <div class="tip-btn" onclick="selectTip(this,'custom')">Other</div>
+        </div>
+        <input type="number" id="otCustomTip" placeholder="Custom tip $" min="0" style="display:none;margin-top:0.5rem;width:130px;padding:0.5rem 0.8rem;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.15);border-radius:0.5rem;color:var(--cream);font-size:0.9rem;">
+      </div>
+      <div class="order-summary" id="otSummary" style="margin-top:1rem;"></div>
+      <button class="btn-next" style="width:100%;margin-top:0.5rem" onclick="confirmOneTime()">✓ Place Order</button>
+    </div>
+    <div class="success-screen" id="otSuccess">
+      <div class="big-icon">📦</div>
+      <h3>Order Placed!</h3>
+      <div class="confirm-box" id="otConfirmBox"></div>
+      <p>We'll text you at <strong>385-368-2193</strong> to confirm your delivery window.</p>
+    </div>
+  </div>
+</div>
+
+<!-- OWNER DASHBOARD LOGIN -->
+<div class="modal-overlay" id="loginOverlay" onclick="handleOverlayClick(event,'loginOverlay')">
+  <div class="login-modal" onclick="event.stopPropagation()">
+    <button class="modal-close" onclick="closeModal('loginOverlay')">×</button>
+    <h2>🔑 Owner Login</h2>
+    <p>Enter the owner password to view your delivery dashboard.</p>
+    <div class="form-group"><label>Password</label><input type="password" id="ownerPass" placeholder="Enter password" onkeydown="if(event.key==='Enter')checkLogin()"></div>
+    <div id="loginError" style="color:var(--red);font-size:0.82rem;margin-bottom:0.8rem;display:none;">Incorrect password. Try again.</div>
+    <button class="btn-next" style="width:100%" onclick="checkLogin()">Access Dashboard</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     OWNER DASHBOARD
+══════════════════════════════════════════ -->
+<div class="dashboard-overlay" id="dashboard">
+  <div class="dash-header">
+    <div class="dash-title">📦 SaltFlow Dashboard</div>
+    <div style="display:flex;gap:0.8rem;align-items:center;">
+      <span style="font-size:0.82rem;color:var(--text-light)" id="dashDate"></span>
+      <button class="dash-close" onclick="closeDashboard()">✕ Close</button>
+    </div>
+  </div>
+  <div class="dash-body">
+    <div class="dash-stats">
+      <div class="dash-stat"><div class="dash-stat-num" id="statTotal">0</div><div class="dash-stat-label">Total Bookings</div></div>
+      <div class="dash-stat"><div class="dash-stat-num" id="statPending">0</div><div class="dash-stat-label">Pending</div></div>
+      <div class="dash-stat"><div class="dash-stat-num" id="statConfirmed">0</div><div class="dash-stat-label">Confirmed</div></div>
+      <div class="dash-stat"><div class="dash-stat-num" id="statRevenue">$0</div><div class="dash-stat-label">Est. Monthly Rev</div></div>
+      <div class="dash-stat"><div class="dash-stat-num" id="statTips">$0</div><div class="dash-stat-label">Total Tips</div></div>
+    </div>
+
+    <!-- Revenue Chart -->
+    <div class="dash-chart-wrap">
+      <div class="dash-chart-title">📈 Monthly Revenue (last 6 months)</div>
+      <div class="chart-bars" id="revenueChart"></div>
+    </div>
+
+    <div class="dash-section-title">Delivery Schedule</div>
+
+    <!-- View Toggle + Filters + Export -->
+    <div class="dash-view-toggle">
+      <button class="view-btn active" id="viewListBtn" onclick="switchView('list',this)">📋 List</button>
+      <button class="view-btn" id="viewRouteBtn" onclick="switchView('route',this)">🗺 Route View</button>
+      <button class="export-btn" onclick="exportCSV()">⬇ Export CSV</button>
+    </div>
+    <div class="dash-filters" id="dashFilters">
+      <button class="filter-btn active" onclick="filterBookings('all',this)">All</button>
+      <button class="filter-btn" onclick="filterBookings('pending',this)">Pending</button>
+      <button class="filter-btn" onclick="filterBookings('confirmed',this)">Confirmed</button>
+      <button class="filter-btn" onclick="filterBookings('delivered',this)">Delivered</button>
+    </div>
+
+    <div id="bookingsContainer"></div>
+    <div class="route-view" id="routeView"></div>
+  </div>
+</div>
+
+<script>
+// ─── DATA STORE ───────────────────────────────────────────────────────────
+const STORAGE_KEY = 'saltflow_bookings';
+let bookings = [];
+function loadBookings() { try { bookings = JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch(e) { bookings = []; } }
+function saveBookings() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(bookings)); } catch(e) {} }
+loadBookings();
+
+// ─── PLAN CONFIG ──────────────────────────────────────────────────────────
+const PLANS = {
+  single: { label: 'Single', bags: 1, salt: 10, delivery: 22, total: 32 },
+  double: { label: 'Double', bags: 2, salt: 20, delivery: 22, total: 42 },
+  triple: { label: 'Triple', bags: 3, salt: 30, delivery: 22, total: 52 }
+};
+
+// ─── MODAL HELPERS ────────────────────────────────────────────────────────
+function openModal(plan) {
+  resetBookingForm();
+  if (plan) document.getElementById('s1plan').value = plan;
+  document.getElementById('bookingOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  renderCalendar();
+}
+function closeModal(id) { document.getElementById(id).classList.remove('open'); document.body.style.overflow = ''; }
+function handleOverlayClick(e, id) { if (e.target.id === id) closeModal(id); }
+
+// ─── MULTI-STEP BOOKING ───────────────────────────────────────────────────
+let currentStep = 1, selectedDate = null, selectedTime = null, fillupRequested = false;
+
+function toggleFillup() {
+  fillupRequested = !fillupRequested;
+  document.getElementById('fillupToggle').classList.toggle('checked', fillupRequested);
+  document.getElementById('fillupCheck').textContent = fillupRequested ? '✓' : '';
+}
+
+function goStep(n) {
+  if (n > currentStep) {
+    if (currentStep === 1) {
+      if (!document.getElementById('s1name').value.trim()) { alert('Please enter your name.'); return; }
+      if (!document.getElementById('s1phone').value.trim()) { alert('Please enter your phone number.'); return; }
+      if (!document.getElementById('s1addr').value.trim()) { alert('Please enter your address.'); return; }
+    }
+    if (currentStep === 2) {
+      if (!selectedDate) { alert('Please select a delivery date.'); return; }
+      if (!selectedTime) { alert('Please select a time window.'); return; }
+    }
+  }
+  document.getElementById('step' + currentStep).classList.remove('active');
+  document.getElementById('prog' + currentStep).classList.remove('active');
+  currentStep = n;
+  document.getElementById('step' + n).classList.add('active');
+  for (let i = 1; i <= n; i++) document.getElementById('prog' + i).classList.add('active');
+  if (n === 3) renderOrderSummary();
+}
+
+function renderOrderSummary() {
+  const plan = PLANS[document.getElementById('s1plan').value];
+  const name = document.getElementById('s1name').value;
+  const addr = document.getElementById('s1addr').value;
+  const notes = document.getElementById('s2notes').value;
+  document.getElementById('orderSummary').innerHTML = `
+    <div class="order-row"><span class="olabel">Name</span><span class="oval">${name}</span></div>
+    <div class="order-row"><span class="olabel">Address</span><span class="oval">${addr}</span></div>
+    <div class="order-row"><span class="olabel">Plan</span><span class="oval">${plan.label} (${plan.bags} bag${plan.bags>1?'s':''})</span></div>
+    <div class="order-row"><span class="olabel">Delivery date</span><span class="oval">${formatDate(selectedDate)}</span></div>
+    <div class="order-row"><span class="olabel">Time window</span><span class="oval">${selectedTime}</span></div>
+    ${notes ? `<div class="order-row"><span class="olabel">Notes</span><span class="oval">${notes}</span></div>` : ''}
+    <div class="order-row"><span class="olabel">Load into softener</span><span class="oval" style="color:${fillupRequested?'var(--green)':'var(--text-light)'}">${fillupRequested ? '✓ Yes please!' : 'No thanks'}</span></div>
+    <hr class="order-divider">
+    <div class="order-row"><span class="olabel">Salt (${plan.bags} × $10)</span><span class="oval">$${plan.salt}</span></div>
+    <div class="order-row"><span class="olabel">Delivery fee</span><span class="oval">$${plan.delivery}</span></div>
+    <hr class="order-divider">
+    <div class="order-row total"><span class="olabel">Monthly Total</span><span class="oval">$${plan.total}/mo</span></div>`;
+}
+
+function confirmBooking() {
+  const plan = PLANS[document.getElementById('s1plan').value];
+  const booking = {
+    id: Date.now(), type: 'subscription',
+    name: document.getElementById('s1name').value.trim(),
+    phone: document.getElementById('s1phone').value.trim(),
+    address: document.getElementById('s1addr').value.trim(),
+    plan: document.getElementById('s1plan').value,
+    planLabel: plan.label, bags: plan.bags, total: plan.total,
+    date: selectedDate, time: selectedTime,
+    notes: document.getElementById('s2notes').value.trim(),
+    fillup: fillupRequested, tip: 0,
+    status: 'pending', ownerNote: '',
+    createdAt: new Date().toISOString()
+  };
+  bookings.push(booking); saveBookings();
+  ['step1','step2','step3'].forEach(s => document.getElementById(s).classList.remove('active'));
+  document.querySelectorAll('.progress-bar .progress-step').forEach(p => p.style.background = 'var(--teal)');
+  document.getElementById('confirmBox').innerHTML = `
+    <div><span>Name: </span>${booking.name}</div>
+    <div><span>Plan: </span>${plan.label} — $${plan.total}/mo</div>
+    <div><span>Date: </span>${formatDate(booking.date)}</div>
+    <div><span>Time: </span>${booking.time}</div>
+    <div><span>Address: </span>${booking.address}</div>
+    <div><span>Fill softener: </span>${booking.fillup ? "✓ Yes — we'll load it in" : 'No — doorstep drop'}</div>`;
+  document.getElementById('bookingSuccess').style.display = 'block';
+  setTimeout(() => closeModal('bookingOverlay'), 5000);
+}
+
+function resetBookingForm() {
+  currentStep = 1; selectedDate = null; selectedTime = null; fillupRequested = false;
+  ['s1name','s1phone','s1addr','s2notes'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+  fillupRequested = false;
+  document.getElementById('fillupToggle').classList.remove('checked');
+  document.getElementById('fillupCheck').textContent = '';
+  document.getElementById('s1plan').value = 'double';
+  for (let i = 1; i <= 3; i++) {
+    document.getElementById('step'+i).classList.toggle('active', i === 1);
+    document.getElementById('prog'+i).classList.toggle('active', i === 1);
+  }
+  document.querySelectorAll('.progress-bar .progress-step').forEach(p => p.style.background = '');
+  document.getElementById('bookingSuccess').style.display = 'none';
+  document.querySelectorAll('.time-slot').forEach(t => t.classList.remove('selected'));
+}
+
+// ─── CALENDAR ─────────────────────────────────────────────────────────────
+let calYear, calMonth;
+function initCal() { const n = new Date(); calYear = n.getFullYear(); calMonth = n.getMonth(); }
+initCal();
+
+function renderCalendar() {
+  const now = new Date();
+  const firstDay = new Date(calYear, calMonth, 1).getDay();
+  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  document.getElementById('calMonthLabel').textContent = `${monthNames[calMonth]} ${calYear}`;
+  const grid = document.getElementById('calGrid');
+  grid.innerHTML = '';
+  ['Su','Mo','Tu','We','Th','Fr','Sa'].forEach(d => { const el = document.createElement('div'); el.className = 'cal-day-label'; el.textContent = d; grid.appendChild(el); });
+  for (let i = 0; i < firstDay; i++) { const el = document.createElement('div'); el.className = 'cal-day empty'; grid.appendChild(el); }
+  for (let d = 1; d <= daysInMonth; d++) {
+    const el = document.createElement('div'); el.className = 'cal-day'; el.textContent = d;
+    const thisDate = new Date(calYear, calMonth, d);
+    const today = new Date(); today.setHours(0,0,0,0);
+    const minDate = new Date(today); minDate.setDate(today.getDate() + 1);
+    if (thisDate < minDate) { el.classList.add('disabled'); }
+    else {
+      if (thisDate.toDateString() === today.toDateString()) el.classList.add('today');
+      const dateStr = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      if (selectedDate === dateStr) el.classList.add('selected');
+      el.onclick = () => selectDate(dateStr, el);
+    }
+    grid.appendChild(el);
+  }
+}
+
+function changeMonth(dir) {
+  calMonth += dir;
+  if (calMonth < 0) { calMonth = 11; calYear--; } if (calMonth > 11) { calMonth = 0; calYear++; }
+  renderCalendar();
+}
+function selectDate(dateStr, el) { selectedDate = dateStr; document.querySelectorAll('.cal-day').forEach(d => d.classList.remove('selected')); el.classList.add('selected'); }
+function selectTime(el, val) { selectedTime = val; document.querySelectorAll('.time-slot').forEach(t => t.classList.remove('selected')); el.classList.add('selected'); }
+function formatDate(dateStr) {
+  if (!dateStr) return '—';
+  const [y,m,d] = dateStr.split('-').map(Number);
+  return `${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m-1]} ${d}, ${y}`;
+}
+
+// ─── ONE-TIME ORDER ───────────────────────────────────────────────────────
+let otBags = 1, otFillup = false, otTip = 0;
+
+function changeOtBags(dir) {
+  otBags = Math.max(1, Math.min(5, otBags + dir));
+  document.getElementById('otBagCount').textContent = otBags;
+  document.getElementById('otLbs').textContent = otBags * 40;
+  const salt = otBags * 10;
+  document.getElementById('otSaltPrice').textContent = '$' + salt;
+  document.getElementById('otTotal').textContent = '$' + (salt + 22);
+}
+
+function openOneTimeModal() {
+  document.getElementById('ot1bags').value = String(otBags);
+  const minDate = new Date(); minDate.setDate(minDate.getDate() + 1);
+  document.getElementById('ot1date').min = minDate.toISOString().split('T')[0];
+  otFillup = false; otTip = 0;
+  document.getElementById('otFillupToggle').classList.remove('checked');
+  document.getElementById('otFillupCheck').textContent = '';
+  document.querySelectorAll('.tip-btn').forEach(t => t.classList.remove('selected'));
+  document.getElementById('otCustomTip').style.display = 'none';
+  document.getElementById('otCustomTip').value = '';
+  document.getElementById('otForm').style.display = 'block';
+  document.getElementById('otSuccess').style.display = 'none';
+  updateOtSummary();
+  document.getElementById('oneTimeOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function toggleOtFillup() {
+  otFillup = !otFillup;
+  document.getElementById('otFillupToggle').classList.toggle('checked', otFillup);
+  document.getElementById('otFillupCheck').textContent = otFillup ? '✓' : '';
+}
+
+function selectTip(el, val) {
+  document.querySelectorAll('.tip-btn').forEach(t => t.classList.remove('selected'));
+  el.classList.add('selected');
+  const customInput = document.getElementById('otCustomTip');
+  if (val === 'custom') { customInput.style.display = 'block'; customInput.focus(); otTip = 0; customInput.oninput = () => { otTip = parseFloat(customInput.value) || 0; updateOtSummary(); }; }
+  else { customInput.style.display = 'none'; otTip = val; }
+  updateOtSummary();
+}
+
+function updateOtSummary() {
+  const bags = parseInt(document.getElementById('ot1bags').value) || otBags;
+  const salt = bags * 10; const total = salt + 22 + otTip;
+  document.getElementById('otSummary').innerHTML = `
+    <div class="order-row"><span class="olabel">Salt (${bags} × $10)</span><span class="oval">$${salt}</span></div>
+    <div class="order-row"><span class="olabel">Delivery fee</span><span class="oval">$22</span></div>
+    ${otTip > 0 ? `<div class="order-row"><span class="olabel">Tip 💛</span><span class="oval" style="color:var(--gold)">$${otTip}</span></div>` : ''}
+    <hr class="order-divider">
+    <div class="order-row total"><span class="olabel">Total</span><span class="oval">$${total}</span></div>`;
+}
+
+document.addEventListener('change', e => { if (e.target.id === 'ot1bags') updateOtSummary(); });
+
+function confirmOneTime() {
+  const name = document.getElementById('ot1name').value.trim();
+  const phone = document.getElementById('ot1phone').value.trim();
+  const addr = document.getElementById('ot1addr').value.trim();
+  const date = document.getElementById('ot1date').value;
+  if (!name || !phone || !addr || !date) { alert('Please fill in all fields.'); return; }
+  const bags = parseInt(document.getElementById('ot1bags').value);
+  const salt = bags * 10; const total = salt + 22 + otTip;
+  const booking = {
+    id: Date.now(), type: 'onetime',
+    name, phone, address: addr,
+    plan: 'onetime', planLabel: `One-Time (${bags} bag${bags>1?'s':''})`,
+    bags, total, salt, tip: otTip,
+    date, time: 'Flexible',
+    notes: '', fillup: otFillup,
+    status: 'pending', ownerNote: '',
+    createdAt: new Date().toISOString()
+  };
+  bookings.push(booking); saveBookings();
+  document.getElementById('otForm').style.display = 'none';
+  document.getElementById('otConfirmBox').innerHTML = `
+    <div><span>Name: </span>${name}</div>
+    <div><span>Bags: </span>${bags} × 40 lb</div>
+    <div><span>Date: </span>${formatDate(date)}</div>
+    <div><span>Total: </span>$${total}${otTip>0?' (incl. $'+otTip+' tip)':''}</div>
+    <div><span>Fill softener: </span>${otFillup ? "✓ Yes" : 'No'}</div>`;
+  document.getElementById('otSuccess').style.display = 'block';
+  setTimeout(() => closeModal('oneTimeOverlay'), 5000);
+}
+
+// ─── OWNER DASHBOARD ──────────────────────────────────────────────────────
+const _pc = [111,119,101,110,97,110,100,105,115,97,97,99];
+const OWNER_PASS = _pc.map(c=>String.fromCharCode(c)).join('');
+
+function openDashboard() {
+  document.getElementById('loginOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  setTimeout(() => document.getElementById('ownerPass').focus(), 200);
+}
+
+function checkLogin() {
+  const val = document.getElementById('ownerPass').value;
+  if (val === OWNER_PASS) {
+    closeModal('loginOverlay');
+    document.getElementById('ownerPass').value = '';
+    document.getElementById('loginError').style.display = 'none';
+    showDashboard();
+  } else { document.getElementById('loginError').style.display = 'block'; }
+}
+
+function showDashboard() {
+  loadBookings();
+  document.getElementById('dashboard').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  document.getElementById('dashDate').textContent = new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  updateDashStats();
+  renderRevenueChart();
+  renderBookings('all');
+}
+
+function closeDashboard() { document.getElementById('dashboard').classList.remove('open'); document.body.style.overflow = ''; }
+
+function updateDashStats() {
+  loadBookings();
+  const pending = bookings.filter(b => b.status === 'pending').length;
+  const confirmed = bookings.filter(b => b.status === 'confirmed').length;
+  const revenue = bookings.filter(b => b.status !== 'delivered').reduce((s,b) => s + (b.total||0), 0);
+  const tips = bookings.reduce((s,b) => s + (b.tip||0), 0);
+  document.getElementById('statTotal').textContent = bookings.length;
+  document.getElementById('statPending').textContent = pending;
+  document.getElementById('statConfirmed').textContent = confirmed;
+  document.getElementById('statRevenue').textContent = '$' + revenue;
+  document.getElementById('statTips').textContent = '$' + tips;
+}
+
+// ─── REVENUE CHART ────────────────────────────────────────────────────────
+function renderRevenueChart() {
+  loadBookings();
+  const now = new Date();
+  const months = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push({ year: d.getFullYear(), month: d.getMonth(), label: d.toLocaleString('default',{month:'short'}), rev: 0 });
+  }
+  bookings.forEach(b => {
+    if (!b.date) return;
+    const [y,m] = b.date.split('-').map(Number);
+    const slot = months.find(s => s.year === y && s.month === m-1);
+    if (slot) slot.rev += (b.total || 0);
+  });
+  const maxRev = Math.max(...months.map(m => m.rev), 1);
+  const chart = document.getElementById('revenueChart');
+  chart.innerHTML = months.map(m => `
+    <div class="chart-bar-wrap">
+      <div class="chart-bar-val">${m.rev > 0 ? '$'+m.rev : ''}</div>
+      <div class="chart-bar" style="height:${Math.round((m.rev/maxRev)*70)+10}px" title="$${m.rev}"></div>
+      <div class="chart-bar-label">${m.label}</div>
+    </div>`).join('');
+}
+
+// ─── FILTER & VIEW TOGGLE ─────────────────────────────────────────────────
+let currentFilter = 'all', currentView = 'list';
+
+function filterBookings(filter, btn) {
+  currentFilter = filter;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if (currentView === 'list') renderBookings(filter);
+  else renderRouteView();
+}
+
+function switchView(view, btn) {
+  currentView = view;
+  document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('dashFilters').style.display = view === 'list' ? 'flex' : 'none';
+  if (view === 'list') {
+    document.getElementById('bookingsContainer').style.display = 'block';
+    document.getElementById('routeView').classList.remove('active');
+    renderBookings(currentFilter);
+  } else {
+    document.getElementById('bookingsContainer').style.display = 'none';
+    document.getElementById('routeView').classList.add('active');
+    renderRouteView();
+  }
+}
+
+// ─── LIST VIEW ────────────────────────────────────────────────────────────
+function renderBookings(filter) {
+  loadBookings();
+  const filtered = filter === 'all' ? bookings : bookings.filter(b => b.status === filter);
+  const sorted = [...filtered].sort((a,b) => new Date(a.date) - new Date(b.date));
+  const container = document.getElementById('bookingsContainer');
+  if (sorted.length === 0) { container.innerHTML = `<div class="empty-state"><div class="big">📭</div><p>No ${filter==='all'?'':filter} bookings yet.</p></div>`; return; }
+  container.innerHTML = `
+    <table class="bookings-table">
+      <thead><tr><th>Customer</th><th>Plan</th><th>Date</th><th>Time</th><th>Address / Notes</th><th>Total</th><th>Status</th><th>Owner Note</th><th>Actions</th></tr></thead>
+      <tbody>
+        ${sorted.map(b => `
+          <tr>
+            <td><strong>${b.name}</strong><br><span style="color:var(--text-light);font-size:0.78rem">${b.phone}</span></td>
+            <td>${b.planLabel}<br><span style="color:var(--text-light);font-size:0.78rem">${b.bags} bag${b.bags>1?'s':''}</span></td>
+            <td>${formatDate(b.date)}</td>
+            <td style="color:var(--text-light);font-size:0.82rem">${b.time}</td>
+            <td style="font-size:0.8rem;max-width:150px">${b.address}
+              ${b.notes?`<br><span style="color:var(--text-light)">${b.notes}</span>`:''}
+              ${b.fillup?`<br><span style="color:var(--green);font-weight:700;font-size:0.75rem">🪣 Fill softener</span>`:''}
+              ${b.tip>0?`<br><span style="color:var(--gold);font-size:0.75rem">💛 Tip: $${b.tip}</span>`:''}
+            </td>
+            <td style="color:var(--teal);font-weight:700">$${b.total}</td>
+            <td><span class="status-badge ${b.status}">${b.status}</span></td>
+            <td>
+              <textarea class="owner-note-input" id="note_${b.id}" rows="2" placeholder="Internal note...">${b.ownerNote||''}</textarea>
+              <button class="save-note-btn" onclick="saveNote(${b.id})">Save</button>
+            </td>
+            <td>
+              ${b.status==='pending'?`<button class="dash-action-btn" onclick="updateStatus(${b.id},'confirmed')">Confirm</button>`:''}
+              ${b.status==='confirmed'?`<button class="dash-action-btn" onclick="updateStatus(${b.id},'delivered')">Delivered</button>`:''}
+              <button class="dash-action-btn del" onclick="deleteBooking(${b.id})">✕</button>
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+// ─── ROUTE VIEW ───────────────────────────────────────────────────────────
+function renderRouteView() {
+  loadBookings();
+  const active = bookings.filter(b => b.status !== 'delivered');
+  const grouped = {};
+  active.forEach(b => { if (!grouped[b.date]) grouped[b.date] = []; grouped[b.date].push(b); });
+  const sorted = Object.keys(grouped).sort();
+  const rv = document.getElementById('routeView');
+  if (sorted.length === 0) { rv.innerHTML = `<div class="empty-state"><div class="big">🗺</div><p>No upcoming deliveries.</p></div>`; return; }
+  rv.innerHTML = sorted.map(date => `
+    <div class="route-day">
+      <div class="route-day-header">
+        <span>📅 ${formatDate(date)}</span>
+        <span>${grouped[date].length} stop${grouped[date].length>1?'s':''} · $${grouped[date].reduce((s,b)=>s+b.total,0)} revenue</span>
+      </div>
+      ${grouped[date].map((b,i) => `
+        <div class="route-stop">
+          <div class="route-stop-num">${i+1}</div>
+          <div class="route-stop-info">
+            <div class="route-stop-name">${b.name} <span style="color:var(--text-light);font-weight:400;font-size:0.8rem">${b.time}</span></div>
+            <div class="route-stop-detail">${b.address} · ${b.planLabel} · $${b.total}${b.fillup?' · 🪣 Fill':''}</div>
+            ${b.notes?`<div class="route-stop-detail" style="color:var(--gold)">📝 ${b.notes}</div>`:''}
+          </div>
+          <span class="status-badge ${b.status}" style="flex-shrink:0">${b.status}</span>
+        </div>`).join('')}
+    </div>`).join('');
+}
+
+// ─── OWNER NOTES ─────────────────────────────────────────────────────────
+function saveNote(id) {
+  loadBookings();
+  const note = document.getElementById('note_' + id).value.trim();
+  bookings = bookings.map(b => b.id === id ? {...b, ownerNote: note} : b);
+  saveBookings();
+  const btn = document.querySelector(`#note_${id} + .save-note-btn`);
+  if (btn) { btn.textContent = '✓ Saved'; setTimeout(() => btn.textContent = 'Save', 1500); }
+}
+
+// ─── CSV EXPORT ───────────────────────────────────────────────────────────
+function exportCSV() {
+  loadBookings();
+  if (bookings.length === 0) { alert('No bookings to export.'); return; }
+  const headers = ['ID','Type','Name','Phone','Address','Plan','Bags','Salt','Delivery','Tip','Total','Date','Time','Fill Softener','Status','Notes','Owner Note','Created'];
+  const rows = bookings.map(b => [
+    b.id, b.type||'subscription', b.name, b.phone, `"${b.address}"`, b.planLabel, b.bags,
+    (b.bags*10), 22, b.tip||0, b.total, b.date, b.time,
+    b.fillup?'Yes':'No', b.status, `"${b.notes||''}"`, `"${b.ownerNote||''}"`, b.createdAt
+  ]);
+  const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `saltflow-bookings-${new Date().toISOString().split('T')[0]}.csv`;
+  a.click();
+}
+
+// ─── STATUS & DELETE ──────────────────────────────────────────────────────
+function updateStatus(id, status) {
+  loadBookings(); bookings = bookings.map(b => b.id===id ? {...b, status} : b);
+  saveBookings(); updateDashStats(); renderRevenueChart();
+  if (currentView === 'list') renderBookings(currentFilter); else renderRouteView();
+}
+
+function deleteBooking(id) {
+  if (!confirm('Remove this booking?')) return;
+  loadBookings(); bookings = bookings.filter(b => b.id !== id);
+  saveBookings(); updateDashStats(); renderRevenueChart();
+  if (currentView === 'list') renderBookings(currentFilter); else renderRouteView();
+}
+
+document.querySelectorAll('a[href="#"]').forEach(a => a.addEventListener('click', e => e.preventDefault()));
+</script>
+
+// ─── PLAN CONFIG ─────────────────────────────────────────────────────────
+const PLANS = {
+  single: { label: 'Single', bags: 1, salt: 10, delivery: 22, total: 32 },
+  double: { label: 'Double', bags: 2, salt: 20, delivery: 22, total: 42 },
+  triple: { label: 'Triple', bags: 3, salt: 30, delivery: 22, total: 52 }
+};
+
+// ─── MODAL HELPERS ───────────────────────────────────────────────────────
+function openModal(plan) {
+  resetBookingForm();
+  if (plan) document.getElementById('s1plan').value = plan;
+  document.getElementById('bookingOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  renderCalendar();
+}
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+  document.body.style.overflow = '';
+}
+function handleOverlayClick(e, id) {
+  if (e.target.id === id) closeModal(id);
+}
+
+// ─── MULTI-STEP FORM ─────────────────────────────────────────────────────
+let currentStep = 1;
+let selectedDate = null;
+let selectedTime = null;
+let fillupRequested = false;
+
+function toggleFillup() {
+  fillupRequested = !fillupRequested;
+  document.getElementById('fillupToggle').classList.toggle('checked', fillupRequested);
+  document.getElementById('fillupCheck').textContent = fillupRequested ? '✓' : '';
+}
+
+function goStep(n) {
+  // Validate current step
+  if (n > currentStep) {
+    if (currentStep === 1) {
+      if (!document.getElementById('s1name').value.trim()) { alert('Please enter your name.'); return; }
+      if (!document.getElementById('s1phone').value.trim()) { alert('Please enter your phone number.'); return; }
+      if (!document.getElementById('s1addr').value.trim()) { alert('Please enter your delivery address.'); return; }
+    }
+    if (currentStep === 2) {
+      if (!selectedDate) { alert('Please select a delivery date.'); return; }
+      if (!selectedTime) { alert('Please select a preferred time window.'); return; }
+    }
+  }
+  document.getElementById('step' + currentStep).classList.remove('active');
+  document.getElementById('prog' + currentStep).classList.remove('active');
+  currentStep = n;
+  document.getElementById('step' + n).classList.add('active');
+  for (let i = 1; i <= n; i++) document.getElementById('prog' + i).classList.add('active');
+  if (n === 3) renderOrderSummary();
+}
+
+function renderOrderSummary() {
+  const plan = PLANS[document.getElementById('s1plan').value];
+  const name = document.getElementById('s1name').value;
+  const addr = document.getElementById('s1addr').value;
+  const notes = document.getElementById('s2notes').value;
+  document.getElementById('orderSummary').innerHTML = `
+    <div class="order-row"><span class="olabel">Name</span><span class="oval">${name}</span></div>
+    <div class="order-row"><span class="olabel">Address</span><span class="oval">${addr}</span></div>
+    <div class="order-row"><span class="olabel">Plan</span><span class="oval">${plan.label} (${plan.bags} bag${plan.bags>1?'s':''})</span></div>
+    <div class="order-row"><span class="olabel">Delivery date</span><span class="oval">${formatDate(selectedDate)}</span></div>
+    <div class="order-row"><span class="olabel">Time window</span><span class="oval">${selectedTime}</span></div>
+    ${notes ? `<div class="order-row"><span class="olabel">Notes</span><span class="oval">${notes}</span></div>` : ''}
+    <div class="order-row"><span class="olabel">Load into softener</span><span class="oval" style="color:${fillupRequested?'var(--green)':'var(--text-light)'}">${fillupRequested ? '✓ Yes please!' : 'No thanks'}</span></div>
+    <hr class="order-divider">
+    <div class="order-row"><span class="olabel">Salt (${plan.bags} × $10)</span><span class="oval">$${plan.salt}</span></div>
+    <div class="order-row"><span class="olabel">Delivery fee</span><span class="oval">$${plan.delivery}</span></div>
+    <hr class="order-divider">
+    <div class="order-row total"><span class="olabel">Monthly Total</span><span class="oval">$${plan.total}/mo</span></div>
+  `;
+}
+
+function confirmBooking() {
+  const plan = PLANS[document.getElementById('s1plan').value];
+  const booking = {
+    id: Date.now(),
+    name: document.getElementById('s1name').value.trim(),
+    phone: document.getElementById('s1phone').value.trim(),
+    address: document.getElementById('s1addr').value.trim(),
+    plan: document.getElementById('s1plan').value,
+    planLabel: plan.label,
+    bags: plan.bags,
+    total: plan.total,
+    date: selectedDate,
+    time: selectedTime,
+    notes: document.getElementById('s2notes').value.trim(),
+    fillup: fillupRequested,
+    status: 'pending',
+    createdAt: new Date().toISOString()
+  };
+  bookings.push(booking);
+  saveBookings();
+
+  // Show success
+  ['step1','step2','step3'].forEach(s => document.getElementById(s).classList.remove('active'));
+  const prog = document.querySelectorAll('.progress-bar .progress-step');
+  prog.forEach(p => p.style.background = 'var(--teal)');
+  document.getElementById('confirmBox').innerHTML = `
+    <div><span>Name: </span>${booking.name}</div>
+    <div><span>Plan: </span>${plan.label} — $${plan.total}/mo</div>
+    <div><span>Date: </span>${formatDate(booking.date)}</div>
+    <div><span>Time: </span>${booking.time}</div>
+    <div><span>Address: </span>${booking.address}</div>
+    <div><span>Fill softener: </span>${booking.fillup ? '✓ Yes — we\'ll load it in' : 'No — doorstep drop'}</div>
+  `;
+  document.getElementById('bookingSuccess').style.display = 'block';
+  setTimeout(() => closeModal('bookingOverlay'), 5000);
+}
+
+function resetBookingForm() {
+  currentStep = 1;
+  selectedDate = null;
+  selectedTime = null;
+  ['s1name','s1phone','s1addr','s2notes'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+  fillupRequested = false;
+  document.getElementById('fillupToggle').classList.remove('checked');
+  document.getElementById('fillupCheck').textContent = '';
+  document.getElementById('s1plan').value = 'double';
+  for (let i = 1; i <= 3; i++) {
+    document.getElementById('step'+i).classList.toggle('active', i === 1);
+    document.getElementById('prog'+i).classList.toggle('active', i === 1);
+  }
+  document.querySelectorAll('.progress-bar .progress-step').forEach(p => p.style.background = '');
+  document.getElementById('bookingSuccess').style.display = 'none';
+  document.querySelectorAll('.time-slot').forEach(t => t.classList.remove('selected'));
+}
+
+// ─── MINI CALENDAR ───────────────────────────────────────────────────────
+let calYear, calMonth;
+
+function initCal() {
+  const now = new Date();
+  calYear = now.getFullYear();
+  calMonth = now.getMonth();
+}
+initCal();
+
+function renderCalendar() {
+  const now = new Date();
+  const firstDay = new Date(calYear, calMonth, 1).getDay();
+  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  document.getElementById('calMonthLabel').textContent = `${monthNames[calMonth]} ${calYear}`;
+
+  const grid = document.getElementById('calGrid');
+  grid.innerHTML = '';
+  ['Su','Mo','Tu','We','Th','Fr','Sa'].forEach(d => {
+    const el = document.createElement('div');
+    el.className = 'cal-day-label'; el.textContent = d;
+    grid.appendChild(el);
+  });
+  for (let i = 0; i < firstDay; i++) {
+    const el = document.createElement('div'); el.className = 'cal-day empty'; grid.appendChild(el);
+  }
+  for (let d = 1; d <= daysInMonth; d++) {
+    const el = document.createElement('div');
+    el.className = 'cal-day';
+    el.textContent = d;
+    const thisDate = new Date(calYear, calMonth, d);
+    const today = new Date(); today.setHours(0,0,0,0);
+    // Disable past dates and same-day (need 1 day notice)
+    const minDate = new Date(today); minDate.setDate(today.getDate() + 1);
+    if (thisDate < minDate) { el.classList.add('disabled'); }
+    else {
+      if (thisDate.toDateString() === today.toDateString()) el.classList.add('today');
+      const dateStr = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      if (selectedDate === dateStr) el.classList.add('selected');
+      el.onclick = () => selectDate(dateStr, el);
+    }
+    grid.appendChild(el);
+  }
+}
+
+function changeMonth(dir) {
+  calMonth += dir;
+  if (calMonth < 0) { calMonth = 11; calYear--; }
+  if (calMonth > 11) { calMonth = 0; calYear++; }
+  renderCalendar();
+}
+
+function selectDate(dateStr, el) {
+  selectedDate = dateStr;
+  document.querySelectorAll('.cal-day').forEach(d => d.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function selectTime(el, val) {
+  selectedTime = val;
+  document.querySelectorAll('.time-slot').forEach(t => t.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return '—';
+  const [y,m,d] = dateStr.split('-').map(Number);
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${months[m-1]} ${d}, ${y}`;
+}
+
+// ─── OWNER DASHBOARD ─────────────────────────────────────────────────────
+// Password stored as char codes — not plaintext in source
+const _pc = [111,119,101,110,97,110,100,105,115,97,97,99];
+const OWNER_PASS = _pc.map(c=>String.fromCharCode(c)).join('');
+
+function openDashboard() {
+  document.getElementById('loginOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  setTimeout(() => document.getElementById('ownerPass').focus(), 200);
+}
+
+function checkLogin() {
+  const val = document.getElementById('ownerPass').value;
+  if (val === OWNER_PASS) {
+    closeModal('loginOverlay');
+    document.getElementById('ownerPass').value = '';
+    document.getElementById('loginError').style.display = 'none';
+    showDashboard();
+  } else {
+    document.getElementById('loginError').style.display = 'block';
+  }
+}
+
+function showDashboard() {
+  loadBookings();
+  document.getElementById('dashboard').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  document.getElementById('dashDate').textContent = new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  updateDashStats();
+  renderBookings('all');
+}
+
+function closeDashboard() {
+  document.getElementById('dashboard').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function updateDashStats() {
+  loadBookings();
+  const pending = bookings.filter(b => b.status === 'pending').length;
+  const confirmed = bookings.filter(b => b.status === 'confirmed').length;
+  const revenue = bookings.filter(b => b.status !== 'delivered').reduce((s,b) => s + b.total, 0);
+  document.getElementById('statTotal').textContent = bookings.length;
+  document.getElementById('statPending').textContent = pending;
+  document.getElementById('statConfirmed').textContent = confirmed;
+  document.getElementById('statRevenue').textContent = '$' + revenue;
+}
+
+let currentFilter = 'all';
+function filterBookings(filter, btn) {
+  currentFilter = filter;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderBookings(filter);
+}
+
+function renderBookings(filter) {
+  loadBookings();
+  const filtered = filter === 'all' ? bookings : bookings.filter(b => b.status === filter);
+  const sorted = [...filtered].sort((a,b) => new Date(a.date) - new Date(b.date));
+  const container = document.getElementById('bookingsContainer');
+
+  if (sorted.length === 0) {
+    container.innerHTML = `<div class="empty-state"><div class="big">📭</div><p>No ${filter === 'all' ? '' : filter} bookings yet.</p></div>`;
+    return;
+  }
+
+  container.innerHTML = `
+    <table class="bookings-table">
+      <thead><tr>
+        <th>Customer</th><th>Plan</th><th>Date</th><th>Time</th><th>Address</th><th>Total</th><th>Status</th><th>Actions</th>
+      </tr></thead>
+      <tbody>
+        ${sorted.map(b => `
+          <tr>
+            <td><strong>${b.name}</strong><br><span style="color:var(--text-light);font-size:0.8rem">${b.phone}</span></td>
+            <td>${b.planLabel}<br><span style="color:var(--text-light);font-size:0.8rem">${b.bags} bag${b.bags>1?'s':''}</span></td>
+            <td>${formatDate(b.date)}</td>
+            <td style="color:var(--text-light);font-size:0.85rem">${b.time}</td>
+            <td style="font-size:0.82rem;max-width:160px">${b.address}${b.notes ? `<br><span style="color:var(--text-light)">${b.notes}</span>` : ''}${b.fillup ? `<br><span style="color:var(--green);font-weight:700;font-size:0.78rem">🪣 Fill softener</span>` : ''}</td>
+            <td style="color:var(--teal);font-weight:700">$${b.total}</td>
+            <td><span class="status-badge ${b.status}">${b.status}</span></td>
+            <td>
+              ${b.status === 'pending' ? `<button class="dash-action-btn" onclick="updateStatus(${b.id},'confirmed')">Confirm</button>` : ''}
+              ${b.status === 'confirmed' ? `<button class="dash-action-btn" onclick="updateStatus(${b.id},'delivered')">Delivered</button>` : ''}
+              <button class="dash-action-btn del" onclick="deleteBooking(${b.id})">✕</button>
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function updateStatus(id, status) {
+  loadBookings();
+  bookings = bookings.map(b => b.id === id ? {...b, status} : b);
+  saveBookings();
+  updateDashStats();
+  renderBookings(currentFilter);
+}
+
+function deleteBooking(id) {
+  if (!confirm('Remove this booking?')) return;
+  loadBookings();
+  bookings = bookings.filter(b => b.id !== id);
+  saveBookings();
+  updateDashStats();
+  renderBookings(currentFilter);
+}
+
+// Prevent # scrolling
+document.querySelectorAll('a[href="#"]').forEach(a => a.addEventListener('click', e => e.preventDefault()));
+</script>
+</body>
+</html>
