@@ -96,10 +96,101 @@ async function callAnthropic({ system, messages, maxTokens = 500 }) {
   return textBlock ? textBlock.text : '';
 }
 
+// Extracts the last complete JSON object {...} from text.
+// Robust against extra text before/after the JSON (e.g. model prefacing output).
+function extractJSON(text) {
+  const lastBrace = text.lastIndexOf('}');
+  if (lastBrace === -1) throw new Error('No JSON object found in response');
+
+  let braceCount = 0;
+  let startIdx = -1;
+  for (let i = lastBrace; i >= 0; i--) {
+    if (text[i] === '}') braceCount++;
+    else if (text[i] === '{') {
+      braceCount--;
+      if (braceCount === 0) {
+        startIdx = i;
+        break;
+      }
+    }
+  }
+
+  if (startIdx === -1) throw new Error('No complete JSON object found');
+  return JSON.parse(text.slice(startIdx, lastBrace + 1));
+}
+
+// Generates a normalized cache key from a food description (lowercased, trimmed).
+function getCacheKey(description) {
+  return description.trim().toLowerCase();
+}
+
+// Generates a cache key for photo + optional note (uses simple string hash).
+function getPhotoCacheKey(imageBase64, note) {
+  // Simple hash of image base64 (first 100 chars + length) + note, to make distinct cache keys.
+  // Not a crypto hash, just a deterministic key.
+  const imagePrefix = imageBase64.substring(0, 100);
+  const imageLength = imageBase64.length;
+  const noteStr = (note || '').trim().toLowerCase();
+  return `photo:${imageLength}:${imagePrefix}:${noteStr}`.substring(0, 500);
+}
+
+// Checks food_cache for an exact-match description. Returns the cached entry if found, null otherwise.
+// If isPreGeneratedKey is true, uses the description as-is; otherwise normalizes it with getCacheKey().
+async function checkFoodCache(description, isPreGeneratedKey = false) {
+  const cacheKey = isPreGeneratedKey ? description : getCacheKey(description);
+  try {
+    const res = await fetch(
+      `${process.env.SUPABASE_URL}/rest/v1/food_cache?description_key=eq.${encodeURIComponent(cacheKey)}`,
+      {
+        headers: {
+          apikey: process.env.SUPABASE_ANON_KEY,
+          'content-type': 'application/json',
+        },
+      }
+    );
+    if (!res.ok) return null;
+    const rows = await res.json();
+    if (rows.length === 0) return null;
+    return rows[0];
+  } catch {
+    return null;
+  }
+}
+
+// Stores a food estimate in the shared food_cache table.
+async function cacheFood(description, { food_name, calories, protein_g, carbs_g, fat_g }) {
+  const cacheKey = getCacheKey(description);
+  try {
+    await fetch(`${process.env.SUPABASE_URL}/rest/v1/food_cache`, {
+      method: 'POST',
+      headers: {
+        apikey: process.env.SUPABASE_ANON_KEY,
+        'content-type': 'application/json',
+        Prefer: 'resolution=merge-duplicates',
+      },
+      body: JSON.stringify({
+        description_key: cacheKey,
+        food_name,
+        calories,
+        protein_g,
+        carbs_g,
+        fat_g,
+      }),
+    });
+  } catch {
+    // Cache write failure is non-fatal; proceed anyway.
+  }
+}
+
 module.exports = {
   DAILY_AI_LIMIT,
   jsonResponse,
   verifyUser,
   checkAndIncrementRateLimit,
   callAnthropic,
+  extractJSON,
+  getCacheKey,
+  getPhotoCacheKey,
+  checkFoodCache,
+  cacheFood,
 };
