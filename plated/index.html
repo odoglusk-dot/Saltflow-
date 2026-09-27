@@ -4287,8 +4287,113 @@ function calorieRangeForGoal(calorieGoal, goalMode, bmr) {
 
 let addFriendMessage = '';
 
+// ── In-app User Guide (Profile → Guide) ──────────────────────────────────
+// Static, pre-written reference content — same spirit as TIP_LIBRARY and
+// the exercises table's cue cards, not AI-generated per view. Kept fully
+// separate from the first-time onboarding wizard (showOnboarding()/
+// renderOnboarding()) rather than feeding into it: onboarding is a short
+// 3-step "get started" flow shown once at signup, while this is a much
+// larger browsable reference meant to be consulted later — folding one
+// into the other would either bloat onboarding or bury this behind a
+// one-time screen.
+const USER_GUIDE_SECTIONS = [
+  {
+    id: 'nutrition', title: 'Nutrition',
+    entries: [
+      { id: 'manual-logging', title: 'Manual Food Logging',
+        body: 'Search Krafft\'s food database from the Log Food tab, or type in your own food and enter its calories and macros by hand. Manual logging is free, forever, with no daily limit.' },
+      { id: 'quick-add', title: 'Quick Add',
+        body: 'Save foods you eat regularly — like your go-to breakfast — as one-tap Quick Add entries from the Log Food tab, so you don\'t have to search or type them in again. Quick Add is part of the free tier.' },
+      { id: 'photo-logging', title: 'Photo Food Logging (Snap a Photo)',
+        body: 'Snap a Photo of your meal from the Log Food tab and Krafft\'s AI estimates its calories and macros for you — no manual entry needed. This is a paid-tier AI feature (3-day free trial, then $4.99/month); manual logging and Quick Add remain free forever either way.' },
+      { id: 'macro-goals', title: 'Macro & Goal Tracking',
+        body: 'Set daily calorie, protein, carb, fat, and water goals from the Profile tab, or use the Goal Calculator there (Mifflin-St Jeor formula) to get a personalized estimate from your age, sex, height, weight, activity level, and optional target weight/date. Your Dashboard tracks each day\'s progress against these goals.' },
+      { id: 'weekly-recap', title: 'Weekly Recap Card',
+        body: 'The "This Week" card on your Dashboard tracks your protein and hydration goal streaks over the last 7 days, plus your daily averages versus goal. Tap "Share weekly recap" to generate a shareable image summary of the week.' },
+    ],
+  },
+  {
+    id: 'training', title: 'Training',
+    entries: [
+      { id: 'training-splits', title: 'Training Splits (Presets & Custom)',
+        body: 'Set up a training split from the Lifts tab — pick a ready-made preset (like Push/Pull/Legs) or build a fully custom rotation with your own day labels and muscle-group focus per day. Krafft uses your split to highlight today\'s focus and suggest exercises on the Lifts tab.' },
+      { id: 'exercise-library', title: 'Exercise Library & Cue Cards',
+        body: 'Every exercise in Krafft\'s library comes with quick cue-card bullets (setup, execution, common mistake, bracing) shown the first time you log it, or after a long gap — plus hypertrophy guidance (a rep range, rest interval, tempo note, and mind-muscle cue) for muscle-growth-focused training. Browse the full library anytime with the Glossary button on the Lifts tab.' },
+      { id: 'pr-tracking', title: 'PR Tracking',
+        body: 'Krafft automatically tracks your all-time personal record (heaviest weight logged) for every exercise. Your current PRs show on the Lifts tab in the Personal Records strip, each with a mini trend line of your history on that lift.' },
+    ],
+  },
+  {
+    id: 'coaching', title: 'Coaching & Insights',
+    entries: [
+      { id: 'post-session-analysis', title: 'Post-Session AI Analysis',
+        body: 'Tap "End Workout" on the Lifts tab once you\'re done training for the day, and Krafft can generate a short AI writeup comparing today\'s session to your recent history — generated once per day and cached, not regenerated every time you look. The full comparative analysis needs at least 3 prior days where you trained the same exercise as today; before that, you\'ll get a lighter summary instead.' },
+      { id: 'achievements', title: 'Achievements & Milestones',
+        body: 'Unlock achievements for things like logging streaks, hitting new PRs, and exploring cue cards in the Exercise Glossary. Once earned, an achievement stays earned permanently. Check your progress anytime from the Achievements card in Profile.' },
+    ],
+  },
+  {
+    id: 'account', title: 'Account & Tiers',
+    entries: [
+      { id: 'tiers', title: 'Free vs. Paid Tiers',
+        body: 'Manual food and lift logging, Quick Add, your Dashboard, training splits, and the friends leaderboard are free, forever, with no time limit. AI-powered features — photo and text macro estimation (Snap a Photo, Describe It) and Ask AI — are $4.99/month after a 3-day free trial.' },
+      { id: 'managing-account', title: 'Managing Your Account',
+        body: 'Update your display name, turn off evening logging-reminder emails, or sign out, all from the Profile tab. Deleting your account from Profile permanently removes it and all logged data — you\'ll need to type DELETE to confirm, since this can\'t be undone.' },
+    ],
+  },
+];
+let showUserGuide = false;
+let guideExpandedId = null;
+let guideSearch = '';
+
+function renderUserGuide(panel) {
+  const q = guideSearch.trim().toLowerCase();
+  const matches = (entry) => !q || entry.title.toLowerCase().includes(q) || entry.body.toLowerCase().includes(q);
+  panel.innerHTML = `
+    <div class="card">
+      <div class="row" style="justify-content:space-between;align-items:center;">
+        <h3 style="margin:0;">User Guide</h3>
+        <button class="btn btn-sm btn-ghost" id="closeGuideBtn" style="flex:none;">✕ Close</button>
+      </div>
+      <div class="field" style="margin-top:0.75rem;">
+        <input class="input" id="guideSearch" placeholder="Search the guide…" value="${esc(guideSearch)}">
+      </div>
+      <div class="chip-row">
+        ${USER_GUIDE_SECTIONS.map((s) => `<button class="chip" data-guide-jump="${s.id}">${esc(s.title)}</button>`).join('')}
+      </div>
+    </div>
+    ${USER_GUIDE_SECTIONS.map((section) => {
+      const entries = section.entries.filter(matches);
+      if (!entries.length) return '';
+      return `
+      <div class="card" id="guide-section-${section.id}">
+        <h3>${esc(section.title)}</h3>
+        ${entries.map((e) => `
+          <div class="glossary-row">
+            <div class="log-row" style="cursor:pointer;border-bottom:none;padding-bottom:${guideExpandedId === e.id ? '0.25rem' : '0.6rem'};" data-guide-toggle="${e.id}">
+              <div class="name">${esc(e.title)}</div>
+              <span class="muted">${guideExpandedId === e.id ? '▲' : '▼'}</span>
+            </div>
+            ${guideExpandedId === e.id ? `<p class="muted small" style="padding-bottom:0.6rem;border-bottom:1px solid var(--border);">${esc(e.body)}</p>` : ''}
+          </div>`).join('')}
+      </div>`;
+    }).join('')}
+  `;
+  $('#closeGuideBtn').addEventListener('click', () => { showUserGuide = false; renderProfile(); });
+  $('#guideSearch').addEventListener('input', (e) => { guideSearch = e.target.value; renderUserGuide(panel); });
+  $$('[data-guide-jump]', panel).forEach((btn) => btn.addEventListener('click', () => {
+    $(`#guide-section-${btn.dataset.guideJump}`, panel)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }));
+  $$('[data-guide-toggle]', panel).forEach((row) => row.addEventListener('click', () => {
+    const id = row.dataset.guideToggle;
+    guideExpandedId = guideExpandedId === id ? null : id;
+    renderUserGuide(panel);
+  }));
+}
+
 function renderProfile() {
   const panel = $('#panel-profile');
+  if (showUserGuide) { renderUserGuide(panel); return; }
   const p = state.profile || {};
   const bs = state.bodyStats || {};
   panel.innerHTML = `
@@ -4436,6 +4541,12 @@ function renderProfile() {
     </div>
 
     <div class="card">
+      <h3>Guide</h3>
+      <p class="muted">A browsable how-to for every feature — logging, training splits, PRs, AI analysis, tiers, and more.</p>
+      <button class="btn" id="openGuideBtn">Browse the Guide</button>
+    </div>
+
+    <div class="card">
       <h3>Support</h3>
       <p class="muted">Something broken, or just have a question?</p>
       <a class="btn" href="mailto:${SUPPORT_EMAIL}?subject=Krafft%20support">Contact Support</a>
@@ -4463,6 +4574,8 @@ function renderProfile() {
   });
 
   $$('[data-achievement-share]', panel).forEach((btn) => btn.addEventListener('click', () => shareAchievement(btn.dataset.achievementShare)));
+
+  $('#openGuideBtn').addEventListener('click', () => { showUserGuide = true; renderProfile(); });
 
   $('#goal_save').addEventListener('click', async () => {
     const goals = {
