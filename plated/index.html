@@ -5395,6 +5395,80 @@ function suggestedExercisesHtml(alreadyLoggedNames) {
   `;
 }
 
+// Shared citation library backing the hypertrophy guidance shown per
+// exercise and the training-frequency note shown by the split card. Per
+// explicit product instruction, these three citations (copy preserved
+// verbatim below) are the ONLY ones this feature is allowed to cite — do
+// not add more without going back for verification first, since a
+// fabricated citation would undermine the app's "science-based"
+// positioning. `lines` is shown inline; `more` is the plain-language
+// "learn more" expansion, itself just elaborating on the same studies,
+// never introducing a new one.
+const CITATION_LIBRARY = {
+  hypertrophy: {
+    lines: [
+      'Based on research showing hypertrophy gains are similar across a range of loads, provided sets are taken close to effort failure (Schoenfeld et al., 2017).',
+      'Based on research on rest interval duration and training outcomes (Grgic et al., 2018).',
+    ],
+    more: 'A 2017 meta-analysis (Schoenfeld, Grgic, Ogborn & Krieger, Journal of Strength and Conditioning Research) found no significant difference in muscle growth between lower-load (under 60% of your one-rep max) and higher-load (over 60%) training, as long as sets were taken close to failure — that\'s why the rep range above is a suggestion, not a hard rule. A 2018 systematic review (Grgic, Schoenfeld, et al., Sports Medicine) looked specifically at how the length of rest between sets affects strength and muscle growth, which the rest suggestion above is based on.',
+  },
+  frequency: {
+    lines: [
+      'Based on research showing muscle groups trained 2x/week or more tend to see better growth outcomes than once weekly (Schoenfeld et al., 2016).',
+    ],
+    more: 'A 2016 meta-analysis (Schoenfeld, Grgic & Krieger, Sports Medicine) found that muscle groups trained two or more times per week saw significantly better hypertrophy outcomes than muscle groups trained just once a week — worth keeping in mind when deciding how to split your training days.',
+  },
+};
+// Session-only footnote state (dismissed/expanded), keyed per rendered
+// instance (e.g. "hypertrophy:Bench Press") so dismissing one exercise's
+// citation doesn't hide it everywhere else. Resets on reload — this is a
+// lightweight UI convenience, not user data worth a database column.
+const citationDismissed = new Set();
+const citationExpanded = new Set();
+function citationBlockHtml(topicKey, instanceId) {
+  if (citationDismissed.has(instanceId)) return '';
+  const c = CITATION_LIBRARY[topicKey];
+  const expanded = citationExpanded.has(instanceId);
+  return `
+    <div class="citation-line">
+      <p class="muted small" style="margin:0.4rem 0 0;">${c.lines.map((l) => esc(l)).join(' ')}</p>
+      ${expanded ? `<p class="muted small" style="margin:0.4rem 0 0;">${esc(c.more)}</p>` : ''}
+      <div class="row" style="gap:0.75rem;margin-top:0.25rem;">
+        <button class="btn-link" data-citation-more="${esc(instanceId)}">${expanded ? 'Show less' : 'Learn more'}</button>
+        <button class="btn-link" data-citation-dismiss="${esc(instanceId)}">Dismiss</button>
+      </div>
+    </div>`;
+}
+function wireCitationEvents(panel, rerender) {
+  $$('[data-citation-more]', panel).forEach((btn) => btn.addEventListener('click', () => {
+    const id = btn.dataset.citationMore;
+    if (citationExpanded.has(id)) citationExpanded.delete(id); else citationExpanded.add(id);
+    rerender();
+  }));
+  $$('[data-citation-dismiss]', panel).forEach((btn) => btn.addEventListener('click', () => {
+    citationDismissed.add(btn.dataset.citationDismiss);
+    rerender();
+  }));
+}
+
+// The four hypertrophy_* columns on `exercises` are nullable (older/
+// unseeded rows may not have them) — render nothing rather than an
+// empty section if none are present.
+function hypertrophyBlockHtml(def) {
+  if (!def.hypertrophy_rep_range && !def.hypertrophy_rest_interval && !def.hypertrophy_tempo && !def.hypertrophy_mind_muscle_cue) return '';
+  return `
+    <div class="hypertrophy-block">
+      <h4 style="margin:0.75rem 0 0.35rem;">For Hypertrophy</h4>
+      <ul class="cue-list">
+        ${def.hypertrophy_rep_range ? `<li><strong>Rep range:</strong> ${esc(def.hypertrophy_rep_range)}</li>` : ''}
+        ${def.hypertrophy_rest_interval ? `<li><strong>Rest:</strong> ${esc(def.hypertrophy_rest_interval)}</li>` : ''}
+        ${def.hypertrophy_tempo ? `<li><strong>Tempo:</strong> ${esc(def.hypertrophy_tempo)}</li>` : ''}
+        ${def.hypertrophy_mind_muscle_cue ? `<li><strong>Mind-muscle cue:</strong> ${esc(def.hypertrophy_mind_muscle_cue)}</li>` : ''}
+      </ul>
+      ${citationBlockHtml('hypertrophy', `hypertrophy:${def.name}`)}
+    </div>`;
+}
+
 function cueCardHtml(banner) {
   const { trigger, def } = banner;
   if (!def) return '';
@@ -5413,6 +5487,7 @@ function cueCardHtml(banner) {
         <li><strong>Common mistake:</strong> ${esc(def.cue_mistake)}</li>
         <li><strong>Bracing:</strong> ${esc(def.cue_bracing)}</li>
       </ul>
+      ${hypertrophyBlockHtml(def)}
     </div>
   `;
 }
@@ -5453,12 +5528,15 @@ function renderExerciseGlossary(panel) {
             <span class="muted">${glossaryExpandedName === e.name ? '▲' : '▼'}</span>
           </div>
           ${glossaryExpandedName === e.name ? `
-          <ul class="cue-list" style="padding-bottom:0.6rem;border-bottom:1px solid var(--border);">
-            <li><strong>Setup:</strong> ${esc(e.cue_setup)}</li>
-            <li><strong>Execution:</strong> ${esc(e.cue_execution)}</li>
-            <li><strong>Common mistake:</strong> ${esc(e.cue_mistake)}</li>
-            <li><strong>Bracing:</strong> ${esc(e.cue_bracing)}</li>
-          </ul>` : ''}
+          <div style="padding-bottom:0.6rem;border-bottom:1px solid var(--border);">
+            <ul class="cue-list">
+              <li><strong>Setup:</strong> ${esc(e.cue_setup)}</li>
+              <li><strong>Execution:</strong> ${esc(e.cue_execution)}</li>
+              <li><strong>Common mistake:</strong> ${esc(e.cue_mistake)}</li>
+              <li><strong>Bracing:</strong> ${esc(e.cue_bracing)}</li>
+            </ul>
+            ${hypertrophyBlockHtml(e)}
+          </div>` : ''}
         </div>`).join('')}
     </div>
   `;
@@ -5475,6 +5553,7 @@ function renderExerciseGlossary(panel) {
     if (expanding) recordGlossaryView(name);
     renderExerciseGlossary(panel);
   }));
+  wireCitationEvents(panel, () => renderExerciseGlossary(panel));
 }
 
 // Feeds the Learning-category achievement — dedup, only writes when a
@@ -6097,6 +6176,7 @@ function renderLiftLog(panel) {
   if (prDismiss) prDismiss.addEventListener('click', () => { prBanner = null; renderLiftsTab(); });
   const cueDismiss = $('#cueCardDismiss');
   if (cueDismiss) cueDismiss.addEventListener('click', () => { cueCardBanner = null; renderLiftsTab(); });
+  wireCitationEvents(panel, renderLiftsTab);
   $('#openGlossaryBtn').addEventListener('click', () => { showExerciseGlossary = true; renderLiftsTab(); });
   const endWorkoutBtn = $('#endWorkoutBtn');
   if (endWorkoutBtn) endWorkoutBtn.addEventListener('click', endWorkoutSession);
@@ -6433,6 +6513,7 @@ function todaysFocusHtml() {
     <div class="stat-num" style="font-size:1.6rem;">${esc(today.label)}</div>
     ${today.muscle_groups?.length ? `<div class="muted small" style="margin-top:0.25rem;">${today.muscle_groups.join(', ')}</div>` : ''}
     <button class="btn btn-sm btn-ghost" id="splitSetupBtn" style="margin-top:0.5rem;">${splitEditorOpen ? 'Close' : 'Change split'}</button>
+    ${citationBlockHtml('frequency', 'frequency:split')}
   </div>${editor}`;
 }
 
