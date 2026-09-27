@@ -391,19 +391,35 @@ cue_setup                          text
 cue_execution                      text
 cue_mistake                        text
 cue_bracing                        text
+hypertrophy_rep_range              text (e.g. "6–12 reps"; nullable)
+hypertrophy_rest_interval          text (e.g. "2–3 min"; nullable)
+hypertrophy_tempo                  text (e.g. "2-1-1 tempo — lower for 2 sec…"; nullable)
+hypertrophy_mind_muscle_cue        text (one-line mind-muscle-connection cue; nullable)
 created_at                         timestamptz
 ```
 **Frontend reads:** select-only for every account (`exercises_select_all`
 RLS policy, no insert/update/delete policy) — this is shared reference
 content, not per-user data. Seeded once by
 `supabase-schema-phase13-exercises.sql` with ~30 common compound/accessory
-lifts; not user-editable.
+lifts, then replaced (truncate + reinsert — safe, since nothing references
+`exercises.id` by foreign key) by
+`supabase-schema-phase17-exercise-hypertrophy.sql` with the full ~75-exercise
+library plus the four `hypertrophy_*` columns above; not user-editable.
 
 **Build once, reuse across features** — this single table powers:
 - **Cue cards**: the first time a user logs an exercise (or after a long
   gap), the app shows its 4 cue bullets (setup/execution/common mistake/
   bracing) — static copy, not AI-generated, same spirit as the Layer 1
   tips library.
+- **Hypertrophy guidance**: rep range/rest interval/tempo/mind-muscle cue,
+  shown alongside the cue card. The two citations backing rep-range and
+  rest-interval guidance (Schoenfeld et al. 2017; Grgic et al. 2018) live in
+  a static `CITATION_LIBRARY` object in index.html, not a column here —
+  they're the same two citations reused across every exercise, so a column
+  would just duplicate the same string ~75 times. A third citation
+  (Schoenfeld et al. 2016, on ≥2x/week training frequency) isn't
+  per-exercise at all and surfaces once, next to the Training Split card,
+  where frequency actually gets decided.
 - **Muscle Map**: `body_region` is the same taxonomy the muscle map
   already visualizes from `lifts.body_region` — a lift logged against a
   name found here can default its `body_region`/`muscle_group` from this
@@ -628,4 +644,12 @@ database; fresh installs get it from `reset-schema.sql`.
 For the End Workout flow + post-session AI analysis (the
 `workout_sessions` table): run
 **`supabase-schema-phase16-workout-sessions.sql`** against an existing
+live database; fresh installs get it from `reset-schema.sql`.
+
+For the exercise library expansion + hypertrophy guidance (adds
+`exercises.hypertrophy_rep_range`/`hypertrophy_rest_interval`/
+`hypertrophy_tempo`/`hypertrophy_mind_muscle_cue`, then truncates and
+reseeds `exercises` with the full ~75-exercise library — safe, since
+nothing references `exercises.id` by foreign key): run
+**`supabase-schema-phase17-exercise-hypertrophy.sql`** against an existing
 live database; fresh installs get it from `reset-schema.sql`.
