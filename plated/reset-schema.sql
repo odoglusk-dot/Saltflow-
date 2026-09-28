@@ -532,9 +532,12 @@ create policy "training_splits_delete_own" on training_splits for delete using (
 
 -- ── exercises (reference data: cue cards, muscle map, split builder,
 --    glossary) ──────────────────────────────────────────────────────────
--- See supabase-schema-phase13-exercises.sql for the original rationale and
+-- See supabase-schema-phase13-exercises.sql for the original rationale,
 -- supabase-schema-phase17-exercise-hypertrophy.sql for the hypertrophy
--- columns and the full ~75-exercise dataset below.
+-- columns and the full ~75-exercise dataset below, and
+-- supabase-schema-phase18-exercise-tags.sql for the tag/muscle-map-key
+-- columns (populated further down via per-row updates, not inline here,
+-- to avoid retyping the whole dataset a second time).
 
 create table exercises (
   id uuid primary key default gen_random_uuid(),
@@ -558,6 +561,22 @@ create table exercises (
   hypertrophy_rest_interval text,
   hypertrophy_tempo text,
   hypertrophy_mind_muscle_cue text,
+  -- Tags for the weekly-sets-per-muscle feature and the Block Builder.
+  -- muscle_map_key/muscle_map_secondary_keys use a more granular 14-key
+  -- taxonomy than body_region above (splits "shoulders" into delts,
+  -- "back" into lats/traps/lowerback, adds obliques) — see phase18 for
+  -- the full key list and the judgment calls behind a few mappings.
+  -- avoid_flags/block_types values in current use are documented in
+  -- phase18; 'impact' and the mobility/functional_athletic block types
+  -- are declared but unused until that exercise content exists.
+  movement_type text,
+  lengthened_bias boolean not null default false,
+  avoid_flags text[] not null default '{}',
+  block_types text[] not null default '{}',
+  muscle_map_key text,
+  muscle_map_secondary_keys text[] not null default '{}',
+  image_url text,
+  video_url text,
   created_at timestamptz not null default now()
 );
 
@@ -1111,6 +1130,87 @@ insert into exercises (name, muscle_group, body_region, secondary_regions, equip
   'Brace hard before descending — you''ll need that same brace to support the overhead press right after.',
   '8–15 reps (often used for conditioning/metabolic work more than pure hypertrophy)', '60–90 sec', 'continuous — squat and press blend into one fluid motion',
   'Feel the momentum from your legs carrying directly into the press — it shouldn''t feel like two separate movements.');
+
+
+-- Exercise tag data (movement type, lengthened-bias, avoid-flags,
+-- block-type suitability, muscle-map keys) — see
+-- supabase-schema-phase18-exercise-tags.sql for the full rationale.
+
+update exercises set movement_type = 'compound', lengthened_bias = false, avoid_flags = '{}', block_types = '{strength,hypertrophy}', muscle_map_key = 'chest', muscle_map_secondary_keys = '{triceps,delts}' where name = 'Bench Press';
+update exercises set movement_type = 'compound', lengthened_bias = false, avoid_flags = '{}', block_types = '{strength,hypertrophy}', muscle_map_key = 'chest', muscle_map_secondary_keys = '{delts,triceps}' where name = 'Incline Bench Press';
+update exercises set movement_type = 'compound', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'chest', muscle_map_secondary_keys = '{triceps}' where name = 'Decline Bench Press';
+update exercises set movement_type = 'compound', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'chest', muscle_map_secondary_keys = '{triceps,delts}' where name = 'Dumbbell Bench Press';
+update exercises set movement_type = 'compound', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'chest', muscle_map_secondary_keys = '{delts,triceps}' where name = 'Incline Dumbbell Press';
+update exercises set movement_type = 'isolation', lengthened_bias = true, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'chest', muscle_map_secondary_keys = '{delts}' where name = 'Dumbbell Fly';
+update exercises set movement_type = 'isolation', lengthened_bias = true, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'chest', muscle_map_secondary_keys = '{delts}' where name = 'Cable Fly';
+update exercises set movement_type = 'isolation', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'chest', muscle_map_secondary_keys = '{delts}' where name = 'Pec Deck';
+update exercises set movement_type = 'compound', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'chest', muscle_map_secondary_keys = '{triceps,abs}' where name = 'Push-Up';
+update exercises set movement_type = 'compound', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'chest', muscle_map_secondary_keys = '{triceps,delts}' where name = 'Dip (Chest-Focused)';
+update exercises set movement_type = 'compound', lengthened_bias = false, avoid_flags = '{heavy_spinal_load}', block_types = '{strength,hypertrophy}', muscle_map_key = 'lowerback', muscle_map_secondary_keys = '{hamstrings,glutes}' where name = 'Deadlift';
+update exercises set movement_type = 'compound', lengthened_bias = true, avoid_flags = '{heavy_spinal_load}', block_types = '{hypertrophy}', muscle_map_key = 'hamstrings', muscle_map_secondary_keys = '{glutes,lowerback}' where name = 'Romanian Deadlift';
+update exercises set movement_type = 'compound', lengthened_bias = false, avoid_flags = '{heavy_spinal_load}', block_types = '{strength,hypertrophy}', muscle_map_key = 'lats', muscle_map_secondary_keys = '{biceps,forearms}' where name = 'Barbell Row';
+update exercises set movement_type = 'compound', lengthened_bias = false, avoid_flags = '{heavy_spinal_load}', block_types = '{strength,hypertrophy}', muscle_map_key = 'lats', muscle_map_secondary_keys = '{biceps,forearms}' where name = 'Pendlay Row';
+update exercises set movement_type = 'compound', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'lats', muscle_map_secondary_keys = '{biceps,forearms}' where name = 'Dumbbell Row';
+update exercises set movement_type = 'compound', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'lats', muscle_map_secondary_keys = '{biceps,forearms}' where name = 'T-Bar Row';
+update exercises set movement_type = 'compound', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'lats', muscle_map_secondary_keys = '{biceps,forearms}' where name = 'Seated Cable Row';
+update exercises set movement_type = 'compound', lengthened_bias = true, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'lats', muscle_map_secondary_keys = '{biceps}' where name = 'Lat Pulldown';
+update exercises set movement_type = 'compound', lengthened_bias = true, avoid_flags = '{}', block_types = '{strength,hypertrophy}', muscle_map_key = 'lats', muscle_map_secondary_keys = '{biceps,forearms}' where name = 'Pull-Up';
+update exercises set movement_type = 'compound', lengthened_bias = true, avoid_flags = '{}', block_types = '{strength,hypertrophy}', muscle_map_key = 'lats', muscle_map_secondary_keys = '{biceps}' where name = 'Chin-Up';
+update exercises set movement_type = 'isolation', lengthened_bias = true, avoid_flags = '{overhead}', block_types = '{hypertrophy}', muscle_map_key = 'lats', muscle_map_secondary_keys = '{abs}' where name = 'Straight-Arm Pulldown';
+update exercises set movement_type = 'isolation', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'delts', muscle_map_secondary_keys = '{traps}' where name = 'Face Pull';
+update exercises set movement_type = 'compound', lengthened_bias = false, avoid_flags = '{overhead,heavy_spinal_load}', block_types = '{strength,hypertrophy}', muscle_map_key = 'delts', muscle_map_secondary_keys = '{triceps,abs}' where name = 'Overhead Press';
+update exercises set movement_type = 'compound', lengthened_bias = false, avoid_flags = '{overhead}', block_types = '{hypertrophy}', muscle_map_key = 'delts', muscle_map_secondary_keys = '{triceps}' where name = 'Seated Dumbbell Press';
+update exercises set movement_type = 'compound', lengthened_bias = false, avoid_flags = '{overhead}', block_types = '{hypertrophy}', muscle_map_key = 'delts', muscle_map_secondary_keys = '{triceps}' where name = 'Arnold Press';
+update exercises set movement_type = 'isolation', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'delts', muscle_map_secondary_keys = '{}' where name = 'Lateral Raise';
+update exercises set movement_type = 'isolation', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'delts', muscle_map_secondary_keys = '{}' where name = 'Front Raise';
+update exercises set movement_type = 'isolation', lengthened_bias = true, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'delts', muscle_map_secondary_keys = '{traps}' where name = 'Rear Delt Fly';
+update exercises set movement_type = 'isolation', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'delts', muscle_map_secondary_keys = '{}' where name = 'Cable Lateral Raise';
+update exercises set movement_type = 'compound', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'delts', muscle_map_secondary_keys = '{traps}' where name = 'Upright Row';
+update exercises set movement_type = 'isolation', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'traps', muscle_map_secondary_keys = '{forearms}' where name = 'Shrug';
+update exercises set movement_type = 'compound', lengthened_bias = false, avoid_flags = '{heavy_spinal_load}', block_types = '{strength,hypertrophy}', muscle_map_key = 'quads', muscle_map_secondary_keys = '{glutes,hamstrings}' where name = 'Back Squat';
+update exercises set movement_type = 'compound', lengthened_bias = false, avoid_flags = '{heavy_spinal_load}', block_types = '{strength,hypertrophy}', muscle_map_key = 'quads', muscle_map_secondary_keys = '{abs,glutes}' where name = 'Front Squat';
+update exercises set movement_type = 'compound', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'quads', muscle_map_secondary_keys = '{glutes}' where name = 'Goblet Squat';
+update exercises set movement_type = 'compound', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'quads', muscle_map_secondary_keys = '{glutes,hamstrings}' where name = 'Leg Press';
+update exercises set movement_type = 'compound', lengthened_bias = true, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'quads', muscle_map_secondary_keys = '{glutes}' where name = 'Bulgarian Split Squat';
+update exercises set movement_type = 'compound', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'quads', muscle_map_secondary_keys = '{glutes,hamstrings}' where name = 'Walking Lunge';
+update exercises set movement_type = 'compound', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'quads', muscle_map_secondary_keys = '{glutes}' where name = 'Reverse Lunge';
+update exercises set movement_type = 'isolation', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'quads', muscle_map_secondary_keys = '{}' where name = 'Leg Extension';
+update exercises set movement_type = 'compound', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'glutes', muscle_map_secondary_keys = '{hamstrings}' where name = 'Hip Thrust';
+update exercises set movement_type = 'compound', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'quads', muscle_map_secondary_keys = '{glutes}' where name = 'Step-Up';
+update exercises set movement_type = 'compound', lengthened_bias = true, avoid_flags = '{heavy_spinal_load}', block_types = '{hypertrophy}', muscle_map_key = 'hamstrings', muscle_map_secondary_keys = '{glutes,lowerback}' where name = 'Stiff-Leg Deadlift';
+update exercises set movement_type = 'isolation', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'hamstrings', muscle_map_secondary_keys = '{}' where name = 'Leg Curl';
+update exercises set movement_type = 'compound', lengthened_bias = true, avoid_flags = '{heavy_spinal_load}', block_types = '{hypertrophy}', muscle_map_key = 'hamstrings', muscle_map_secondary_keys = '{glutes,lowerback}' where name = 'Good Morning';
+update exercises set movement_type = 'isolation', lengthened_bias = true, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'hamstrings', muscle_map_secondary_keys = '{}' where name = 'Nordic Curl';
+update exercises set movement_type = 'compound', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'glutes', muscle_map_secondary_keys = '{hamstrings}' where name = 'Glute Bridge';
+update exercises set movement_type = 'isolation', lengthened_bias = true, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'calves', muscle_map_secondary_keys = '{}' where name = 'Standing Calf Raise';
+update exercises set movement_type = 'isolation', lengthened_bias = true, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'calves', muscle_map_secondary_keys = '{}' where name = 'Seated Calf Raise';
+update exercises set movement_type = 'isolation', lengthened_bias = true, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'calves', muscle_map_secondary_keys = '{}' where name = 'Leg Press Calf Raise';
+update exercises set movement_type = 'isolation', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'biceps', muscle_map_secondary_keys = '{forearms}' where name = 'Barbell Curl';
+update exercises set movement_type = 'isolation', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'biceps', muscle_map_secondary_keys = '{forearms}' where name = 'Dumbbell Curl';
+update exercises set movement_type = 'isolation', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'biceps', muscle_map_secondary_keys = '{forearms}' where name = 'Hammer Curl';
+update exercises set movement_type = 'isolation', lengthened_bias = true, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'biceps', muscle_map_secondary_keys = '{forearms}' where name = 'Preacher Curl';
+update exercises set movement_type = 'isolation', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'biceps', muscle_map_secondary_keys = '{forearms}' where name = 'Cable Curl';
+update exercises set movement_type = 'isolation', lengthened_bias = true, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'biceps', muscle_map_secondary_keys = '{forearms}' where name = 'Incline Dumbbell Curl';
+update exercises set movement_type = 'isolation', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'biceps', muscle_map_secondary_keys = '{}' where name = 'Concentration Curl';
+update exercises set movement_type = 'compound', lengthened_bias = false, avoid_flags = '{}', block_types = '{strength,hypertrophy}', muscle_map_key = 'triceps', muscle_map_secondary_keys = '{chest}' where name = 'Close-Grip Bench Press';
+update exercises set movement_type = 'isolation', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'triceps', muscle_map_secondary_keys = '{}' where name = 'Tricep Pushdown';
+update exercises set movement_type = 'isolation', lengthened_bias = true, avoid_flags = '{overhead}', block_types = '{hypertrophy}', muscle_map_key = 'triceps', muscle_map_secondary_keys = '{}' where name = 'Overhead Tricep Extension';
+update exercises set movement_type = 'isolation', lengthened_bias = true, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'triceps', muscle_map_secondary_keys = '{}' where name = 'Skull Crusher';
+update exercises set movement_type = 'compound', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'triceps', muscle_map_secondary_keys = '{chest}' where name = 'Dip (Tricep-Focused)';
+update exercises set movement_type = 'isolation', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'triceps', muscle_map_secondary_keys = '{}' where name = 'Kickback';
+update exercises set movement_type = 'isolation', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'abs', muscle_map_secondary_keys = '{}' where name = 'Plank';
+update exercises set movement_type = 'isolation', lengthened_bias = false, avoid_flags = '{overhead}', block_types = '{hypertrophy}', muscle_map_key = 'abs', muscle_map_secondary_keys = '{forearms}' where name = 'Hanging Leg Raise';
+update exercises set movement_type = 'isolation', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'abs', muscle_map_secondary_keys = '{}' where name = 'Cable Crunch';
+update exercises set movement_type = 'compound', lengthened_bias = true, avoid_flags = '{overhead}', block_types = '{hypertrophy}', muscle_map_key = 'abs', muscle_map_secondary_keys = '{delts}' where name = 'Ab Wheel Rollout';
+update exercises set movement_type = 'isolation', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'obliques', muscle_map_secondary_keys = '{}' where name = 'Russian Twist';
+update exercises set movement_type = 'isolation', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'abs', muscle_map_secondary_keys = '{}' where name = 'Weighted Sit-Up';
+update exercises set movement_type = 'isolation', lengthened_bias = false, avoid_flags = '{}', block_types = '{hypertrophy}', muscle_map_key = 'obliques', muscle_map_secondary_keys = '{}' where name = 'Pallof Press';
+update exercises set movement_type = 'compound', lengthened_bias = false, avoid_flags = '{heavy_spinal_load}', block_types = '{power_speed}', muscle_map_key = 'lowerback', muscle_map_secondary_keys = '{quads,delts}' where name = 'Clean';
+update exercises set movement_type = 'compound', lengthened_bias = false, avoid_flags = '{heavy_spinal_load}', block_types = '{power_speed}', muscle_map_key = 'lowerback', muscle_map_secondary_keys = '{quads,delts}' where name = 'Power Clean';
+update exercises set movement_type = 'compound', lengthened_bias = false, avoid_flags = '{overhead,heavy_spinal_load}', block_types = '{power_speed}', muscle_map_key = 'lowerback', muscle_map_secondary_keys = '{quads,delts}' where name = 'Clean and Jerk';
+update exercises set movement_type = 'compound', lengthened_bias = false, avoid_flags = '{overhead,heavy_spinal_load}', block_types = '{power_speed}', muscle_map_key = 'lowerback', muscle_map_secondary_keys = '{delts,quads}' where name = 'Snatch';
+update exercises set movement_type = 'compound', lengthened_bias = false, avoid_flags = '{heavy_spinal_load}', block_types = '{strength,hypertrophy}', muscle_map_key = 'forearms', muscle_map_secondary_keys = '{lowerback,abs}' where name = 'Farmer''s Carry';
+update exercises set movement_type = 'compound', lengthened_bias = false, avoid_flags = '{overhead}', block_types = '{hypertrophy}', muscle_map_key = 'quads', muscle_map_secondary_keys = '{delts}' where name = 'Thruster';
 
 -- ── user_achievements (milestone system) ─────────────────────────────────
 -- Definitions (title, coach-voice description, unlock condition) live in

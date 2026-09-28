@@ -395,6 +395,14 @@ hypertrophy_rep_range              text (e.g. "6–12 reps"; nullable)
 hypertrophy_rest_interval          text (e.g. "2–3 min"; nullable)
 hypertrophy_tempo                  text (e.g. "2-1-1 tempo — lower for 2 sec…"; nullable)
 hypertrophy_mind_muscle_cue        text (one-line mind-muscle-connection cue; nullable)
+movement_type                      text ('compound' | 'isolation'; nullable)
+lengthened_bias                    boolean (default false — true if the exercise notably loads the muscle at long length, e.g. RDL, Nordic Curl)
+avoid_flags                        text[] (default '{}' — values in use: 'overhead', 'heavy_spinal_load'; 'impact' reserved, unused)
+block_types                        text[] (default '{}' — values in use: 'strength', 'hypertrophy', 'power_speed'; 'mobility'/'functional_athletic' reserved, unused)
+muscle_map_key                     text (one of the 14 muscle-map keys — see below; nullable)
+muscle_map_secondary_keys          text[] (default '{}' — same 14-key taxonomy)
+image_url                          text (nullable — reserved for a future visual-assets pass)
+video_url                          text (nullable — reserved for a future visual-assets pass)
 created_at                         timestamptz
 ```
 **Frontend reads:** select-only for every account (`exercises_select_all`
@@ -404,7 +412,22 @@ content, not per-user data. Seeded once by
 lifts, then replaced (truncate + reinsert — safe, since nothing references
 `exercises.id` by foreign key) by
 `supabase-schema-phase17-exercise-hypertrophy.sql` with the full ~75-exercise
-library plus the four `hypertrophy_*` columns above; not user-editable.
+library plus the four `hypertrophy_*` columns above, then tagged in place
+(plain updates, no truncate) by `supabase-schema-phase18-exercise-tags.sql`
+with the columns above; not user-editable.
+
+**`muscle_map_key`/`muscle_map_secondary_keys` taxonomy** (14 keys, used by
+the weekly-sets-per-muscle feature and the sculpted muscle map): `chest`,
+`delts`, `biceps`, `triceps`, `forearms`, `abs`, `obliques`, `quads`,
+`calves`, `traps`, `lats`, `lowerback`, `glutes`, `hamstrings`. This is
+more granular than `body_region` above (which stays as-is for the
+existing simple muscle map and `DEFAULT_BODY_REGION` fallback) — it splits
+`shoulders` into `delts`, splits `back` into `lats`/`traps`/`lowerback`,
+and adds `obliques`. All 75 exercises mapped cleanly; see phase18's header
+comment for the handful of judgment calls (e.g. Deadlift and the
+Olympic-lift family are keyed to `lowerback` as their single primary key,
+matching their existing `body_region`; Farmer's Carry is keyed to
+`forearms` as grip-dominant).
 
 **Build once, reuse across features** — this single table powers:
 - **Cue cards**: the first time a user logs an exercise (or after a long
@@ -656,3 +679,10 @@ reseeds `exercises` with the full ~75-exercise library — safe, since
 nothing references `exercises.id` by foreign key): run
 **`supabase-schema-phase17-exercise-hypertrophy.sql`** against an existing
 live database; fresh installs get it from `reset-schema.sql`.
+
+For exercise tags and the muscle-map key mapping (adds `movement_type`,
+`lengthened_bias`, `avoid_flags`, `block_types`, `muscle_map_key`,
+`muscle_map_secondary_keys`, `image_url`, `video_url` to `exercises`, then
+updates all 75 rows in place — no truncate, since phase17's data is left
+untouched): run **`supabase-schema-phase18-exercise-tags.sql`** against an
+existing live database; fresh installs get it from `reset-schema.sql`.
