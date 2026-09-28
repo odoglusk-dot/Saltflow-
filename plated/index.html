@@ -451,17 +451,6 @@
   .history-day-body-inner { padding-top: 0.6rem; }
   .meal-thumb { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; flex: none; }
 
-  /* ── Generic collapsible section groups (reusable across tabs) ───── */
-  .chevron { display: inline-block; flex: none; color: var(--text-dim); transition: transform 0.25s ease; }
-  .chevron.expanded { transform: rotate(90deg); }
-  .section-toggle { margin-bottom: 1rem; }
-  .section-toggle-header { display: flex; align-items: center; gap: 0.6rem; width: 100%;
-    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
-    padding: 0.9rem 1.1rem; cursor: pointer; text-align: left; font: inherit; color: inherit; }
-  .section-toggle-header strong { flex: 1; }
-  .section-toggle-body { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
-  .section-toggle-body-inner { padding-top: 0.85rem; }
-
   .sub-nav { display: flex; gap: 0.4rem; margin-bottom: 1rem; flex-wrap: wrap; }
   .sub-nav button { flex: none; }
 
@@ -937,62 +926,6 @@ function copyToClipboard(text, successMessage) {
   navigator.clipboard.writeText(text)
     .then(() => toast(successMessage))
     .catch(() => toast('Could not copy — select and copy manually.'));
-}
-
-// ── Generic collapsible section groups ──────────────────────────────
-// Wraps an arbitrary chunk of already-rendered HTML behind a card-style
-// header that expands/collapses. Generalized from the History tab's
-// per-day accordion (expandedHistoryDays / .history-day-* below) so it
-// can be reused wherever a tab wants to de-emphasize secondary content
-// by default. `expandedSet` is a Set of group keys owned by the caller
-// (module-level state, same pattern as expandedHistoryDays) — this
-// function only reads it to decide the initial expanded/collapsed
-// render; wireCollapsibleSections owns writing to it.
-function collapsibleSectionHtml(key, label, countLabel, bodyHtml, expandedSet) {
-  const isExpanded = expandedSet.has(key);
-  return `<div class="section-toggle">
-    <button class="section-toggle-header" data-section-toggle="${esc(key)}" aria-expanded="${isExpanded}">
-      <span class="chevron ${isExpanded ? 'expanded' : ''}">▸</span>
-      <strong>${esc(label)}</strong>
-      ${countLabel ? `<span class="muted small">${esc(countLabel)}</span>` : ''}
-    </button>
-    <div class="section-toggle-body" data-section-body="${esc(key)}">
-      <div class="section-toggle-body-inner">${bodyHtml}</div>
-    </div>
-  </div>`;
-}
-
-// Wires click-to-toggle for every collapsibleSectionHtml() instance under
-// `panel`, and syncs each body's initial max-height to expandedSet's
-// current state. Uses the same fixed-cap-on-render / scrollHeight-on-click
-// split as the History accordion below — a render can happen while the
-// owning tab isn't active (display:none makes scrollHeight read 0), but a
-// click can only happen while the tab is visible, so scrollHeight is safe
-// to measure there. Toggling flips styles on the existing nodes directly
-// rather than re-rendering the whole panel, so the max-height transition
-// can actually animate.
-function wireCollapsibleSections(panel, expandedSet) {
-  $$('[data-section-body]', panel).forEach((body) => {
-    if (expandedSet.has(body.dataset.sectionBody)) body.style.maxHeight = '10000px';
-  });
-  $$('[data-section-toggle]', panel).forEach((header) => {
-    header.addEventListener('click', () => {
-      const key = header.dataset.sectionToggle;
-      const body = panel.querySelector(`[data-section-body="${key}"]`);
-      const chevron = header.querySelector('.chevron');
-      if (expandedSet.has(key)) {
-        expandedSet.delete(key);
-        body.style.maxHeight = '0px';
-        chevron.classList.remove('expanded');
-        header.setAttribute('aria-expanded', 'false');
-      } else {
-        expandedSet.add(key);
-        body.style.maxHeight = body.scrollHeight + 'px';
-        chevron.classList.add('expanded');
-        header.setAttribute('aria-expanded', 'true');
-      }
-    });
-  });
 }
 
 // Covers the window between #app becoming visible and bootstrapApp()'s
@@ -4670,7 +4603,7 @@ function calorieRangeForGoal(calorieGoal, goalMode, bmr) {
 }
 
 let addFriendMessage = '';
-let profileGroupExpanded = new Set(); // 'personalize' | 'more' — both collapsed by default
+let profileSubTab = 'account'; // 'account' | 'settings'
 
 // ── In-app User Guide (Profile → Guide) ──────────────────────────────────
 // Static, pre-written reference content — same spirit as TIP_LIBRARY and
@@ -5051,7 +4984,10 @@ function renderProfile() {
   if (showHealthSyncSetup) { renderHealthSyncSetup(panel); return; }
   const p = state.profile || {};
   const bs = state.bodyStats || {};
-  panel.innerHTML = `
+  // "Account" is identity/every-visit content (profile, goals, achievements,
+  // sign out); "Settings" is everything else — same split as the prior
+  // collapsed-sections version, now a real sub-tab.
+  const profileAccountSubTabHtml = `
     <div class="card">
       <h3>Profile</h3>
       <div class="field"><label>Display name</label><input class="input" id="prof_name" value="${esc(p.display_name || '')}"></div>
@@ -5076,7 +5012,20 @@ function renderProfile() {
       ${achievementsGridHtml()}
     </div>
 
-    ${collapsibleSectionHtml('personalize', 'Personalize', '', `
+    <div class="card">
+      <h3>Account</h3>
+      <p class="muted">Signed in as ${esc(state.user.email)}</p>
+      <button class="btn btn-sm" id="signOutBtn" style="margin-bottom:0.75rem;">Sign Out</button>
+      <button class="btn btn-danger" id="delete_account_btn">Delete My Account</button>
+      <div id="delete_confirm" class="hidden" style="margin-top:0.75rem;">
+        <p class="muted">This permanently deletes your account and all logged data. Type DELETE to confirm.</p>
+        <input class="input" id="delete_confirm_input" style="margin-bottom:0.5rem;">
+        <button class="btn btn-danger" id="delete_confirm_btn">Permanently Delete</button>
+      </div>
+    </div>
+  `;
+
+  const profileSettingsSubTabHtml = `
     <div class="card">
       <h3>Goal Calculator</h3>
       <p class="muted">Mifflin-St Jeor based estimate. Pick a target weight and date — the pace that implies is checked
@@ -5126,9 +5075,6 @@ function renderProfile() {
         </label>
       </div>
     </div>
-    `, profileGroupExpanded)}
-
-    ${collapsibleSectionHtml('more', 'More', state.incomingFriendRequests.length ? `${state.incomingFriendRequests.length} friend request${state.incomingFriendRequests.length === 1 ? '' : 's'}` : '', `
     <div class="card">
       <h3>Subscription</h3>
       <span class="badge ${hasAccess(state.subscription) ? 'on' : ''}">${hasAccess(state.subscription) ? '⭐ Paid — AI unlocked' : '🔓 Free tier'}</span>
@@ -5217,22 +5163,22 @@ function renderProfile() {
       <p class="muted">Something broken, or just have a question?</p>
       <a class="btn" href="mailto:${SUPPORT_EMAIL}?subject=Krafft%20support">Contact Support</a>
     </div>
-    `, profileGroupExpanded)}
-
-    <div class="card">
-      <h3>Account</h3>
-      <p class="muted">Signed in as ${esc(state.user.email)}</p>
-      <button class="btn btn-sm" id="signOutBtn" style="margin-bottom:0.75rem;">Sign Out</button>
-      <button class="btn btn-danger" id="delete_account_btn">Delete My Account</button>
-      <div id="delete_confirm" class="hidden" style="margin-top:0.75rem;">
-        <p class="muted">This permanently deletes your account and all logged data. Type DELETE to confirm.</p>
-        <input class="input" id="delete_confirm_input" style="margin-bottom:0.5rem;">
-        <button class="btn btn-danger" id="delete_confirm_btn">Permanently Delete</button>
-      </div>
-    </div>
   `;
 
-  $('#prof_save').addEventListener('click', async () => {
+  panel.innerHTML = `
+    <div class="sub-nav">
+      <button class="btn btn-sm ${profileSubTab === 'account' ? 'btn-primary' : ''}" data-sub="account">Account</button>
+      <button class="btn btn-sm ${profileSubTab === 'settings' ? 'btn-primary' : ''}" data-sub="settings">Settings</button>
+    </div>
+    ${profileSubTab === 'account' ? profileAccountSubTabHtml : profileSettingsSubTabHtml}
+  `;
+
+  $$('[data-sub]', panel).forEach((btn) => btn.addEventListener('click', () => {
+    profileSubTab = btn.dataset.sub;
+    renderProfile();
+  }));
+
+  $('#prof_save')?.addEventListener('click', async () => {
     const display_name = $('#prof_name').value.trim() || 'Athlete';
     const { error } = await supabase.from('profiles').upsert({ id: state.user.id, display_name });
     if (error) return toast('Could not save: ' + error.message);
@@ -5242,11 +5188,10 @@ function renderProfile() {
 
   $$('[data-achievement-share]', panel).forEach((btn) => btn.addEventListener('click', () => shareAchievement(btn.dataset.achievementShare)));
 
-  $('#openGuideBtn').addEventListener('click', () => { showUserGuide = true; renderProfile(); });
-  $('#openHealthSyncSetupBtn').addEventListener('click', () => { showHealthSyncSetup = true; renderProfile(); });
-  wireCollapsibleSections(panel, profileGroupExpanded);
+  $('#openGuideBtn')?.addEventListener('click', () => { showUserGuide = true; renderProfile(); });
+  $('#openHealthSyncSetupBtn')?.addEventListener('click', () => { showHealthSyncSetup = true; renderProfile(); });
 
-  $('#goal_save').addEventListener('click', async () => {
+  $('#goal_save')?.addEventListener('click', async () => {
     const goals = {
       user_id: state.user.id,
       calories: Number($('#goal_cal').value) || 0,
@@ -5266,7 +5211,7 @@ function renderProfile() {
     renderAll();
   });
 
-  $('#calc_run').addEventListener('click', async () => {
+  $('#calc_run')?.addEventListener('click', async () => {
     const age = Number($('#calc_age').value);
     const sex = $('#calc_sex').value;
     const heightFt = Number($('#calc_height_ft').value) || 0;
@@ -5421,7 +5366,7 @@ function renderProfile() {
   const copyLinkBtn = $('#copy_referral_link');
   if (copyLinkBtn) copyLinkBtn.addEventListener('click', () => copyToClipboard($('#referral_link_display').value, 'Referral link copied.'));
 
-  $('#add_friend_btn').addEventListener('click', async () => {
+  $('#add_friend_btn')?.addEventListener('click', async () => {
     const input = $('#add_friend_code_input');
     const code = input.value.trim();
     if (!code) return;
@@ -5473,19 +5418,19 @@ function renderProfile() {
     renderProfile();
   }));
 
-  $('#email_reminders_check').addEventListener('change', async (e) => {
+  $('#email_reminders_check')?.addEventListener('change', async (e) => {
     const { error } = await supabase.from('profiles').upsert({ id: state.user.id, email_reminders_opt_out: !e.target.checked });
     if (error) { toast('Could not save preference: ' + error.message); return; }
     toast(e.target.checked ? 'Reminder emails on.' : 'Reminder emails off.');
     await loadProfile();
   });
 
-  $('#signOutBtn').addEventListener('click', async () => {
+  $('#signOutBtn')?.addEventListener('click', async () => {
     await supabase.auth.signOut();
   });
 
-  $('#delete_account_btn').addEventListener('click', () => $('#delete_confirm').classList.remove('hidden'));
-  $('#delete_confirm_btn').addEventListener('click', async () => {
+  $('#delete_account_btn')?.addEventListener('click', () => $('#delete_confirm').classList.remove('hidden'));
+  $('#delete_confirm_btn')?.addEventListener('click', async () => {
     if ($('#delete_confirm_input').value !== 'DELETE') return toast('Type DELETE exactly to confirm.');
     try {
       await callFunction('delete-account', {});
@@ -6092,7 +6037,7 @@ let cueCardBanner = null; // { trigger: 'first'|'gap', def: exercises row } — 
 let showExerciseGlossary = false;
 let glossaryFilter = { search: '', muscleGroup: '' };
 let glossaryExpandedName = null;
-let liftsGroupExpanded = new Set(); // 'training-plan' | 'your-progress' — both collapsed by default
+let liftsSubTab = 'log'; // 'log' | 'training'
 
 let goalCardEditing = false;
 let goalCardError = '';
@@ -7114,14 +7059,11 @@ function renderLiftLog(panel) {
   // below for the other half of this fix.
   const preservedExerciseWrap = $('#liftExerciseWrap', panel);
 
-  panel.innerHTML = `
-    ${prBanner ? `
-    <div class="card pr-banner">
-      <div class="small">🔥 New PR — <strong>${esc(prBanner.exercise)}</strong> at <span class="mono" style="color:var(--accent);">${prBanner.weight} lb</span> · +${prBanner.improvement} lb over your previous best</div>
-      <button class="btn btn-sm btn-ghost" id="prBannerDismiss">✕</button>
-    </div>` : ''}
-    ${cueCardBanner ? cueCardHtml(cueCardBanner) : ''}
-    ${staleSessionPromptHtml()}
+  // "Log" is the everyday content (today's lift, the log form, today's
+  // exercises); "Training" is the planning/reference content (split,
+  // block builder, weekly volume, muscle map, stats, PRs, history) — same
+  // split as before, now a real sub-tab instead of a collapsed section.
+  const liftLogSubTabHtml = `
     ${todaysLiftPanelHtml()}
     <div class="card">
       <div class="row" style="justify-content:space-between;align-items:center;">
@@ -7202,13 +7144,11 @@ function renderLiftLog(panel) {
       })()}
     </div>` : ''}
     ${suggestedExercisesHtml(exercises)}
+  `;
 
-    ${collapsibleSectionHtml('training-plan', 'Training Plan', '', `
+  const liftTrainingSubTabHtml = `
       ${todaysFocusHtml()}
       ${blockBuilderSummaryCardHtml()}
-    `, liftsGroupExpanded)}
-
-    ${collapsibleSectionHtml('your-progress', 'Your Progress', '', `
       ${weeklyHardSetsHtml(lifts)}
       ${muscleMapHtml(lifts)}
 
@@ -7265,12 +7205,25 @@ function renderLiftLog(panel) {
         </div>
       </div>`;
       })()}
-    `, liftsGroupExpanded)}
-
     ${lifts.length === 0 ? `
     <div class="card">
       <p class="muted" style="text-align:center;">No lifts logged yet — log your first one above to start tracking PRs, volume, and your muscle map.</p>
     </div>` : ''}
+  `;
+
+  panel.innerHTML = `
+    ${prBanner ? `
+    <div class="card pr-banner">
+      <div class="small">🔥 New PR — <strong>${esc(prBanner.exercise)}</strong> at <span class="mono" style="color:var(--accent);">${prBanner.weight} lb</span> · +${prBanner.improvement} lb over your previous best</div>
+      <button class="btn btn-sm btn-ghost" id="prBannerDismiss">✕</button>
+    </div>` : ''}
+    ${cueCardBanner ? cueCardHtml(cueCardBanner) : ''}
+    ${staleSessionPromptHtml()}
+    <div class="sub-nav">
+      <button class="btn btn-sm ${liftsSubTab === 'log' ? 'btn-primary' : ''}" data-sub="log">Log</button>
+      <button class="btn btn-sm ${liftsSubTab === 'training' ? 'btn-primary' : ''}" data-sub="training">Training</button>
+    </div>
+    ${liftsSubTab === 'log' ? liftLogSubTabHtml : liftTrainingSubTabHtml}
   `;
 
   if (preservedExerciseWrap) $('#liftExerciseWrap', panel)?.replaceWith(preservedExerciseWrap);
@@ -7279,7 +7232,10 @@ function renderLiftLog(panel) {
   wireMuscleMapEvents(panel);
   wireSplitEvents(panel);
   wireBlockBuilderSummaryEvents(panel);
-  wireCollapsibleSections(panel, liftsGroupExpanded);
+  $$('[data-sub]', panel).forEach((btn) => btn.addEventListener('click', () => {
+    liftsSubTab = btn.dataset.sub;
+    renderLiftsTab();
+  }));
   $$('[data-pr-open]', panel).forEach((card) => card.addEventListener('click', () => {
     liftsSelectedExercise = card.dataset.prOpen;
     liftHistoryEditingId = null;
@@ -7290,7 +7246,7 @@ function renderLiftLog(panel) {
   if (mgSel) mgSel.addEventListener('change', (e) => { liftForm.muscleGroup = e.target.value; });
   const brSel = $('#lift_bodyRegion');
   if (brSel) brSel.addEventListener('change', (e) => { liftForm.bodyRegion = e.target.value; });
-  $('#lift_weight').addEventListener('input', (e) => {
+  $('#lift_weight')?.addEventListener('input', (e) => {
     liftForm.weight = e.target.value;
     // Patch the ramp content directly rather than a full renderLiftsTab()
     // — the same lesson as the exercise field: a full panel rebuild on
@@ -7301,7 +7257,7 @@ function renderLiftLog(panel) {
   });
   const warmupToggle = $('#warmupRampToggle', panel);
   if (warmupToggle) warmupToggle.addEventListener('click', () => { showWarmupRamp = !showWarmupRamp; renderLiftsTab(); });
-  $('#lift_sets').addEventListener('change', (e) => {
+  $('#lift_sets')?.addEventListener('change', (e) => {
     const count = Math.max(1, Math.min(20, Number(e.target.value) || 1));
     const fillVal = liftForm.repsPerSet.length ? liftForm.repsPerSet[liftForm.repsPerSet.length - 1] : '5';
     while (liftForm.repsPerSet.length < count) liftForm.repsPerSet.push(fillVal);
@@ -7317,11 +7273,11 @@ function renderLiftLog(panel) {
   $$('[data-warmup-idx]', panel).forEach((inp) => inp.addEventListener('change', (e) => {
     liftForm.warmupPerSet[Number(e.target.dataset.warmupIdx)] = e.target.checked;
   }));
-  $('#lift_date').addEventListener('change', (e) => {
+  $('#lift_date')?.addEventListener('change', (e) => {
     liftForm.date = e.target.value || localDateStr();
     renderLiftsTab();
   });
-  $('#lift_isSuperset').addEventListener('change', (e) => {
+  $('#lift_isSuperset')?.addEventListener('change', (e) => {
     liftForm.isSuperset = e.target.checked;
     renderLiftsTab();
   });
@@ -7333,7 +7289,7 @@ function renderLiftLog(panel) {
   if (cueDismiss) cueDismiss.addEventListener('click', () => { cueCardBanner = null; renderLiftsTab(); });
   wireCitationEvents(panel, renderLiftsTab);
   wireTodaysLiftEditEvents(panel);
-  $('#openGlossaryBtn').addEventListener('click', () => { showExerciseGlossary = true; renderLiftsTab(); });
+  $('#openGlossaryBtn')?.addEventListener('click', () => { showExerciseGlossary = true; renderLiftsTab(); });
   const staleStillTraining = $('#staleStillTrainingBtn');
   if (staleStillTraining) staleStillTraining.addEventListener('click', () => { staleSessionPromptDismissed = true; renderLiftsTab(); });
   const staleEndWorkout = $('#staleEndWorkoutBtn');
@@ -7346,7 +7302,7 @@ function renderLiftLog(panel) {
     prefillLiftFormFromLast(val);
     renderLiftsTab();
   }));
-  $('#lift_save').addEventListener('click', addLiftFromForm);
+  $('#lift_save')?.addEventListener('click', addLiftFromForm);
 
   $$('[data-lift-exercise]', panel).forEach((row) => row.addEventListener('click', () => {
     liftsSelectedExercise = row.dataset.liftExercise;
@@ -9317,13 +9273,15 @@ function friendsLeaderboardHtml() {
   </div>`;
 }
 
+let insightsSubTab = 'training'; // 'training' | 'social'
+
 function renderInsightsTab() {
   const panel = $('#panel-insights');
   if (!panel) return;
   const lifts = state.lifts;
   const deload = computeDeloadSignal(lifts);
 
-  panel.innerHTML = `
+  const insightsTrainingSubTabHtml = `
     <div class="card">
       <h3>Training Balance</h3>
       <p class="muted small" style="margin-top:-0.4rem;margin-bottom:0.5rem;">Share of all-time volume by muscle group.</p>
@@ -9355,6 +9313,9 @@ function renderInsightsTab() {
       <h3>Weekly Training Frequency</h3>
       ${weeklyFrequencyChartHtml(lifts)}
     </div>
+  `;
+
+  const insightsSocialSubTabHtml = `
     <div class="card">
       <h3>Nutrition × Training</h3>
       <p class="muted small" style="margin-top:-0.4rem;margin-bottom:0.5rem;">Weekly protein-goal consistency vs. lift volume — no AI, just your own logged data grouped by week.</p>
@@ -9370,6 +9331,19 @@ function renderInsightsTab() {
       ${goalsOverviewHtml(lifts, state.exerciseGoals)}
     </div>
   `;
+
+  panel.innerHTML = `
+    <div class="sub-nav">
+      <button class="btn btn-sm ${insightsSubTab === 'training' ? 'btn-primary' : ''}" data-sub="training">Training</button>
+      <button class="btn btn-sm ${insightsSubTab === 'social' ? 'btn-primary' : ''}" data-sub="social">Nutrition & Social</button>
+    </div>
+    ${insightsSubTab === 'training' ? insightsTrainingSubTabHtml : insightsSocialSubTabHtml}
+  `;
+
+  $$('[data-sub]', panel).forEach((btn) => btn.addEventListener('click', () => {
+    insightsSubTab = btn.dataset.sub;
+    renderInsightsTab();
+  }));
 
   $$('[data-insight-open]', panel).forEach((el) => el.addEventListener('click', () => {
     liftsSelectedExercise = el.dataset.insightOpen;
