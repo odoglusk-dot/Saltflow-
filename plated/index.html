@@ -4652,6 +4652,8 @@ const USER_GUIDE_SECTIONS = [
         body: 'Enter a working weight on the Log-a-Lift form and tap "Suggest a warm-up ramp" for a static percentage-based ramp-up (no AI). Your estimated 1-rep max (Epley formula) is tracked per exercise over time on that exercise\'s detail page, feeding your Strength Score — estimates get less reliable above about 10 reps, which is called out when relevant.' },
       { id: 'pr-tracking', title: 'PR Tracking',
         body: 'Krafft automatically tracks your all-time personal record (heaviest weight logged) for every exercise. Your current PRs show on the Lifts tab in the Personal Records strip, each with a mini trend line of your history on that lift.' },
+      { id: 'block-builder', title: 'Training Block Builder',
+        body: 'Generate an optional 4-week training block from the Lifts tab — pick a focus (Hypertrophy or Strength; Power & Speed, Mobility, and Functional/Athletic are coming soon), up to 3 priority muscle areas for extra volume, days per week, equipment, and anything to avoid. It builds a day-by-day exercise plan from fixed rules (no AI) with a Base → +Sets → +Sets → Deload progression across the 4 weeks. Starting a block doesn\'t change your Training Split setting — you still log lifts the normal way from the Log tab.' },
     ],
   },
   {
@@ -6217,7 +6219,8 @@ function liftHistoryRowHtml(lift, isLast) {
 function renderLiftsTab() {
   const panel = $('#panel-lifts');
   if (!panel) return;
-  if (showExerciseGlossary) renderExerciseGlossary(panel);
+  if (showBlockBuilder) renderBlockBuilder(panel);
+  else if (showExerciseGlossary) renderExerciseGlossary(panel);
   else if (liftsSelectedExercise) renderLiftDetail(panel);
   else if (isSessionEndedToday()) renderSessionSummary(panel);
   else renderLiftLog(panel);
@@ -7127,6 +7130,7 @@ function renderLiftLog(panel) {
     ${suggestedExercisesHtml(exercises)}
 
     ${todaysFocusHtml()}
+    ${blockBuilderSummaryCardHtml()}
     ${weeklyHardSetsHtml(lifts)}
     ${muscleMapHtml(lifts)}
 
@@ -7194,6 +7198,7 @@ function renderLiftLog(panel) {
   wireWeeklyHardSetsEvents(panel);
   wireMuscleMapEvents(panel);
   wireSplitEvents(panel);
+  wireBlockBuilderSummaryEvents(panel);
   $$('[data-pr-open]', panel).forEach((card) => card.addEventListener('click', () => {
     liftsSelectedExercise = card.dataset.prOpen;
     liftHistoryEditingId = null;
@@ -7729,6 +7734,469 @@ function wireSplitEvents(panel) {
     await loadTrainingSplit();
     renderAll();
   });
+}
+
+// ── Optional Block Builder (deterministic, no AI) ───────────────────────
+// A self-contained 4-week block generator built entirely from fixed rules
+// over the exercise library's existing tags (block_types, movement_type,
+// avoid_flags, muscle_map_key, lengthened_bias) — no model call, nothing
+// invented per-request. Deliberately never touches training_splits, the
+// Log a Lift form, or the split picker above: a block is a suggested plan
+// the user follows by logging lifts the normal way, stored as its own
+// jsonb blob on profiles.active_training_block (see
+// supabase-schema-phase23-block-builder.sql).
+const BLOCK_FOCUS_OPTIONS = [
+  { key: 'hypertrophy', name: 'Hypertrophy', description: 'Build muscle size with moderate reps and higher total volume.' },
+  { key: 'strength', name: 'Strength', description: 'Build maximal strength on compound lifts with lower reps, heavier loads.' },
+  { key: 'power_speed', name: 'Power & Speed', description: 'Explosive, Olympic-lift-family training.', comingSoon: true },
+  { key: 'mobility', name: 'Mobility', description: 'Joint range of motion and movement-quality work.', comingSoon: true },
+  { key: 'functional_athletic', name: 'Functional / Athletic', description: 'General athletic conditioning and movement patterns.', comingSoon: true },
+];
+const BLOCK_DAYS_OPTIONS = [3, 4, 5, 6];
+const BLOCK_EQUIPMENT_OPTIONS = ['Barbell', 'Dumbbell', 'Cable', 'Machine', 'Bodyweight'];
+const BLOCK_AVOID_OPTIONS = [
+  { key: 'overhead', label: 'Overhead pressing' },
+  { key: 'heavy_spinal_load', label: 'Heavy spinal loading' },
+];
+const BLOCK_MAX_PRIORITIES = 3;
+// Coarse push/pull/legs grouping used only to build a day's exercise
+// slate — separate from the MUSCLE_GROUPS/muscle_group taxonomy the split
+// picker uses, and from the 14-key muscle map, though it's built from the
+// same muscle-map keys. Abs/obliques are deliberately left out of every
+// group (no split day is "for" abs) and only appear when picked as a
+// priority area, in which case they're added to every training day.
+const BLOCK_GROUP_MUSCLES = {
+  push: ['chest', 'delts', 'triceps'],
+  pull: ['lats', 'traps', 'lowerback', 'biceps', 'forearms'],
+  legs: ['quads', 'hamstrings', 'glutes', 'calves'],
+};
+// Rep/set numbers are this app's own program-writing convention, not a
+// research claim — nothing here gets a citation. Main-lift reps for
+// Hypertrophy intentionally match the verified 6-12 rep range already
+// cited elsewhere (CITATION_LIBRARY.hypertrophy) rather than introducing
+// a second, uncited number for the same thing.
+const BLOCK_SCHEME = {
+  strength: { mainSets: 4, mainReps: '5', accessorySets: 3, accessoryReps: '8-10' },
+  hypertrophy: { mainSets: 3, mainReps: '8-12', accessorySets: 3, accessoryReps: '10-15' },
+};
+const BLOCK_WEEK_STRIP = ['Base', '+Sets', '+Sets', 'Deload'];
+
+function blockSplitTemplate(days) {
+  if (days <= 3) return [
+    { label: 'Full Body A', groups: ['push', 'pull', 'legs'] },
+    { label: 'Full Body B', groups: ['push', 'pull', 'legs'] },
+    { label: 'Full Body C', groups: ['push', 'pull', 'legs'] },
+  ].slice(0, days);
+  if (days === 4) return [
+    { label: 'Upper A', groups: ['push', 'pull'] },
+    { label: 'Lower A', groups: ['legs'] },
+    { label: 'Upper B', groups: ['push', 'pull'] },
+    { label: 'Lower B', groups: ['legs'] },
+  ];
+  if (days === 5) return [
+    { label: 'Push', groups: ['push'] },
+    { label: 'Pull', groups: ['pull'] },
+    { label: 'Legs', groups: ['legs'] },
+    { label: 'Upper', groups: ['push', 'pull'] },
+    { label: 'Lower', groups: ['legs'] },
+  ];
+  return [
+    { label: 'Push A', groups: ['push'] },
+    { label: 'Pull A', groups: ['pull'] },
+    { label: 'Legs A', groups: ['legs'] },
+    { label: 'Push B', groups: ['push'] },
+    { label: 'Pull B', groups: ['pull'] },
+    { label: 'Legs B', groups: ['legs'] },
+  ];
+}
+
+function blockSplitName(days) {
+  if (days <= 3) return `${days}-Day Full Body`;
+  if (days === 4) return '4-Day Upper/Lower';
+  if (days === 5) return '5-Day Push/Pull/Legs + Upper/Lower';
+  return '6-Day Push/Pull/Legs x2';
+}
+
+function blockExercisePool(muscleKey, blockType, usedNames, filters) {
+  return state.exercises.filter((e) =>
+    e.muscle_map_key === muscleKey &&
+    (e.block_types || []).includes(blockType) &&
+    !usedNames.has(e.name) &&
+    (!filters.equipment.length || filters.equipment.includes(e.equipment)) &&
+    !(e.avoid_flags || []).some((f) => filters.avoid.includes(f))
+  );
+}
+
+// Strength-focused blocks fall back to the hypertrophy-tagged pool when a
+// muscle has no strength-tagged option — the library only tags true main
+// barbell/bodyweight lifts 'strength' (see phase18's comment), so most
+// muscles only have one or two candidates there.
+function pickMainExercise(muscleKey, focus, usedNames, filters) {
+  let pool = blockExercisePool(muscleKey, focus, usedNames, filters);
+  if (!pool.length && focus !== 'hypertrophy') pool = blockExercisePool(muscleKey, 'hypertrophy', usedNames, filters);
+  pool = [...pool].sort((a, b) => (a.movement_type === b.movement_type ? 0 : a.movement_type === 'compound' ? -1 : 1));
+  return pool[0] || null;
+}
+
+// Accessory/priority-bonus picks always draw from the hypertrophy pool
+// (accessory volume is accessory volume regardless of the block's main
+// focus) and prefer isolation work over another compound.
+function pickAccessoryExercise(muscleKey, usedNames, filters) {
+  let pool = blockExercisePool(muscleKey, 'hypertrophy', usedNames, filters);
+  pool = [...pool].sort((a, b) => (a.movement_type === b.movement_type ? 0 : a.movement_type === 'isolation' ? -1 : 1));
+  return pool[0] || null;
+}
+
+function blockExerciseEntry(ex, muscleKey, role, focus) {
+  const scheme = role === 'main' ? BLOCK_SCHEME[focus] : BLOCK_SCHEME.hypertrophy;
+  const sets = role === 'main' ? scheme.mainSets : scheme.accessorySets;
+  const reps = role === 'main' ? scheme.mainReps : scheme.accessoryReps;
+  const tags = [];
+  if (role === 'priority') tags.push(`Priority: ${MUSCLE_MAP_KEY_LABELS[muscleKey]}`);
+  if (ex.lengthened_bias) tags.push('Lengthened bias · emerging evidence');
+  const reason = role === 'priority'
+    ? `Extra volume for ${MUSCLE_MAP_KEY_LABELS[muscleKey]}, since you flagged it as a priority area.`
+    : ex.movement_type === 'compound'
+    ? `Primary compound movement for ${MUSCLE_MAP_KEY_LABELS[muscleKey]}.`
+    : `Accessory work for ${MUSCLE_MAP_KEY_LABELS[muscleKey]}.`;
+  return { name: ex.name, muscle: muscleKey, sets, reps, tags, reason };
+}
+
+function generateBlock({ focus, priorities, days, equipment, avoid }) {
+  const filters = { equipment, avoid };
+  const template = blockSplitTemplate(days);
+  const blockDays = template.map((day) => {
+    const usedNames = new Set();
+    const isFullBody = day.groups.length >= 3;
+    const targetMuscles = isFullBody
+      ? ['chest', 'lats', 'quads']
+      : [...new Set(day.groups.flatMap((g) => BLOCK_GROUP_MUSCLES[g]))];
+    // A priority muscle with no natural slot on this day (most commonly
+    // abs/obliques, which belong to no push/pull/legs group) gets added
+    // purely because it's a priority — so its one exercise is tagged
+    // 'priority' outright, rather than picked as a 'main' slot that then
+    // has no bonus exercise left to add on top of it.
+    const addedByPriorityOnly = new Set();
+    priorities.forEach((p) => {
+      if (targetMuscles.includes(p)) return;
+      const belongsToDayGroups = day.groups.some((g) => (BLOCK_GROUP_MUSCLES[g] || []).includes(p));
+      const isUncategorized = !Object.values(BLOCK_GROUP_MUSCLES).some((list) => list.includes(p));
+      if (belongsToDayGroups || isUncategorized) {
+        targetMuscles.push(p);
+        addedByPriorityOnly.add(p);
+      }
+    });
+    const exercises = [];
+    targetMuscles.forEach((muscle) => {
+      if (addedByPriorityOnly.has(muscle)) {
+        const ex = pickMainExercise(muscle, focus, usedNames, filters);
+        if (ex) {
+          usedNames.add(ex.name);
+          exercises.push(blockExerciseEntry(ex, muscle, 'priority', focus));
+        }
+        return;
+      }
+      const main = pickMainExercise(muscle, focus, usedNames, filters);
+      if (main) {
+        usedNames.add(main.name);
+        exercises.push(blockExerciseEntry(main, muscle, 'main', focus));
+      }
+      if (priorities.includes(muscle)) {
+        const bonus = pickAccessoryExercise(muscle, usedNames, filters);
+        if (bonus) {
+          usedNames.add(bonus.name);
+          exercises.push(blockExerciseEntry(bonus, muscle, 'priority', focus));
+        }
+      }
+    });
+    return { label: day.label, groups: day.groups, exercises };
+  });
+  return { focus, priorities, days, equipment, avoid, blockDays, createdDate: localDateStr() };
+}
+
+let showBlockBuilder = false;
+let blockBuilderStep = 1;
+let blockBuilderFocus = null;
+let blockBuilderPriorities = [];
+let blockBuilderDays = 4;
+let blockBuilderEquipment = [];
+let blockBuilderAvoid = [];
+let blockBuilderPreview = null;
+let blockBuilderExpandedDayIndex = 0;
+let blockBuilderViewingActive = false;
+let blockBuilderStarting = false;
+
+function resetBlockBuilderState() {
+  blockBuilderStep = 1;
+  blockBuilderFocus = null;
+  blockBuilderPriorities = [];
+  blockBuilderDays = 4;
+  blockBuilderEquipment = [];
+  blockBuilderAvoid = [];
+  blockBuilderPreview = null;
+  blockBuilderExpandedDayIndex = 0;
+  blockBuilderViewingActive = false;
+}
+
+function blockBuilderProgressHtml(step) {
+  return `<div class="goal-progress-bar"><div class="goal-progress-fill" style="width:${(step / 3) * 100}%;background:var(--accent);"></div></div>
+    <p class="muted small" style="margin:0 0 0.75rem;">Step ${step} of 3</p>`;
+}
+
+function blockBuilderSummaryCardHtml() {
+  const active = state.profile?.active_training_block;
+  if (!active) {
+    return `<div class="card">
+      <h3>Training Block <span class="muted small" style="font-weight:400;">(optional)</span></h3>
+      <p class="muted small">Generate a 4-week block — focus, priority areas, and a day-by-day exercise plan — from fixed rules. No AI.</p>
+      <button class="btn btn-sm" id="blockBuilderOpenBtn">Build a block</button>
+    </div>`;
+  }
+  const start = new Date(`${active.createdDate}T00:00:00`);
+  const today = new Date(`${localDateStr()}T00:00:00`);
+  const daysSince = Math.round((today - start) / 86400000);
+  const weekNum = Math.min(4, Math.floor(Math.max(0, daysSince) / 7) + 1);
+  const focusOpt = BLOCK_FOCUS_OPTIONS.find((o) => o.key === active.focus);
+  return `<div class="card">
+    <div class="row" style="justify-content:space-between;align-items:center;">
+      <h3 style="margin:0;">Training Block</h3>
+      <span class="muted small">Week ${weekNum}/4 · ${esc(BLOCK_WEEK_STRIP[weekNum - 1])}</span>
+    </div>
+    <p class="muted small" style="margin-top:0.25rem;">${esc(focusOpt ? focusOpt.name : active.focus)} · ${esc(blockSplitName(active.days))}</p>
+    <div class="row" style="margin-top:0.5rem;">
+      <button class="btn btn-sm btn-ghost" id="blockBuilderViewBtn">View block</button>
+      <button class="btn btn-sm btn-ghost" id="blockBuilderEndBtn">End block</button>
+    </div>
+  </div>`;
+}
+
+function wireBlockBuilderSummaryEvents(panel) {
+  const openBtn = $('#blockBuilderOpenBtn', panel);
+  if (openBtn) openBtn.addEventListener('click', () => {
+    resetBlockBuilderState();
+    showBlockBuilder = true;
+    renderLiftsTab();
+  });
+  const viewBtn = $('#blockBuilderViewBtn', panel);
+  if (viewBtn) viewBtn.addEventListener('click', () => {
+    blockBuilderPreview = state.profile.active_training_block;
+    blockBuilderExpandedDayIndex = 0;
+    blockBuilderViewingActive = true;
+    blockBuilderStep = 3;
+    showBlockBuilder = true;
+    renderLiftsTab();
+  });
+  const endBtn = $('#blockBuilderEndBtn', panel);
+  if (endBtn) endBtn.addEventListener('click', async () => {
+    const { error } = await supabase.from('profiles').update({ active_training_block: null }).eq('id', state.user.id);
+    if (error) return toast('Could not end block: ' + error.message);
+    state.profile = { ...state.profile, active_training_block: null };
+    renderLiftsTab();
+  });
+}
+
+function blockBuilderStep1Html() {
+  return `<div class="card">
+    <h3>Choose a block focus</h3>
+    ${blockBuilderProgressHtml(1)}
+    <div style="display:flex;flex-direction:column;gap:0.6rem;">
+      ${BLOCK_FOCUS_OPTIONS.map((opt) => {
+        const selected = blockBuilderFocus === opt.key;
+        const disabled = !!opt.comingSoon;
+        return `<button class="card" data-block-focus="${opt.key}" ${disabled ? 'disabled' : ''}
+          style="display:block;width:100%;text-align:left;margin-bottom:0;cursor:${disabled ? 'default' : 'pointer'};opacity:${disabled ? '0.5' : '1'};border:1px solid ${selected ? 'var(--accent)' : 'var(--border)'};background:${selected ? 'var(--surface-2)' : 'var(--surface)'};">
+          <div class="display" style="text-transform:uppercase;font-weight:700;">${esc(opt.name)}</div>
+          <div class="muted small" style="margin-top:0.2rem;">${esc(opt.description)}${disabled ? ' — coming soon, no exercises tagged for this yet.' : ''}</div>
+        </button>`;
+      }).join('')}
+    </div>
+    <button class="btn btn-primary" id="blockNextStep1" style="width:100%;margin-top:0.9rem;" ${blockBuilderFocus ? '' : 'disabled'}>Next</button>
+    <button class="btn btn-ghost" id="blockCancelBtn" style="width:100%;margin-top:0.5rem;">Cancel</button>
+  </div>`;
+}
+
+function wireBlockBuilderStep1(panel) {
+  $$('[data-block-focus]', panel).forEach((btn) => btn.addEventListener('click', () => {
+    if (btn.disabled) return;
+    blockBuilderFocus = btn.dataset.blockFocus;
+    renderLiftsTab();
+  }));
+  const nextBtn = $('#blockNextStep1', panel);
+  if (nextBtn) nextBtn.addEventListener('click', () => {
+    if (!blockBuilderFocus) return;
+    blockBuilderStep = 2;
+    renderLiftsTab();
+  });
+  const cancelBtn = $('#blockCancelBtn', panel);
+  if (cancelBtn) cancelBtn.addEventListener('click', () => {
+    showBlockBuilder = false;
+    resetBlockBuilderState();
+    renderLiftsTab();
+  });
+}
+
+function blockBuilderStep2Html() {
+  return `<div class="card">
+    <h3>What do you want to bring up?</h3>
+    ${blockBuilderProgressHtml(2)}
+    <div class="display" style="text-transform:uppercase;color:var(--accent);font-size:0.85rem;margin-bottom:0.4rem;">Priority areas (up to ${BLOCK_MAX_PRIORITIES})</div>
+    <div class="chip-row" style="margin-bottom:1rem;">
+      ${MUSCLE_MAP_KEYS.map((k) => `<button class="chip ${blockBuilderPriorities.includes(k) ? 'chip-active' : ''}" data-block-priority="${k}">${esc(MUSCLE_MAP_KEY_LABELS[k])}</button>`).join('')}
+    </div>
+    <div class="display" style="text-transform:uppercase;color:var(--accent);font-size:0.85rem;margin-bottom:0.4rem;">Days per week</div>
+    <div class="chip-row" style="margin-bottom:1rem;">
+      ${BLOCK_DAYS_OPTIONS.map((d) => `<button class="chip ${blockBuilderDays === d ? 'chip-active' : ''}" data-block-days="${d}">${d}</button>`).join('')}
+    </div>
+    <div class="display" style="text-transform:uppercase;color:var(--accent);font-size:0.85rem;margin-bottom:0.4rem;">Equipment</div>
+    <div class="chip-row" style="margin-bottom:1rem;">
+      ${BLOCK_EQUIPMENT_OPTIONS.map((eq) => `<button class="chip ${blockBuilderEquipment.includes(eq) ? 'chip-active' : ''}" data-block-equipment="${esc(eq)}">${esc(eq)}</button>`).join('')}
+    </div>
+    <div class="display" style="text-transform:uppercase;color:var(--accent);font-size:0.85rem;margin-bottom:0.4rem;">Avoid (optional)</div>
+    <div class="chip-row">
+      ${BLOCK_AVOID_OPTIONS.map((a) => {
+        const selected = blockBuilderAvoid.includes(a.key);
+        return `<button class="chip ${selected ? 'chip-active' : ''}" data-block-avoid="${a.key}" style="${selected ? 'background:var(--danger);border-color:var(--danger);color:#fff;' : ''}">${esc(a.label)}</button>`;
+      }).join('')}
+    </div>
+    <p class="muted small" style="margin-top:0.6rem;">Avoid options only filter exercises. They aren't medical advice.</p>
+    <button class="btn btn-primary" id="blockBuildBtn" style="width:100%;margin-top:0.75rem;">Build my block</button>
+    <button class="btn btn-ghost" id="blockBackStep2" style="width:100%;margin-top:0.5rem;">Back</button>
+  </div>`;
+}
+
+function wireBlockBuilderStep2(panel) {
+  $$('[data-block-priority]', panel).forEach((btn) => btn.addEventListener('click', () => {
+    const k = btn.dataset.blockPriority;
+    const idx = blockBuilderPriorities.indexOf(k);
+    if (idx >= 0) blockBuilderPriorities.splice(idx, 1);
+    else if (blockBuilderPriorities.length < BLOCK_MAX_PRIORITIES) blockBuilderPriorities.push(k);
+    else return toast(`You can pick up to ${BLOCK_MAX_PRIORITIES} priority areas.`);
+    renderLiftsTab();
+  }));
+  $$('[data-block-days]', panel).forEach((btn) => btn.addEventListener('click', () => {
+    blockBuilderDays = Number(btn.dataset.blockDays);
+    renderLiftsTab();
+  }));
+  $$('[data-block-equipment]', panel).forEach((btn) => btn.addEventListener('click', () => {
+    const eq = btn.dataset.blockEquipment;
+    const idx = blockBuilderEquipment.indexOf(eq);
+    if (idx >= 0) blockBuilderEquipment.splice(idx, 1); else blockBuilderEquipment.push(eq);
+    renderLiftsTab();
+  }));
+  $$('[data-block-avoid]', panel).forEach((btn) => btn.addEventListener('click', () => {
+    const key = btn.dataset.blockAvoid;
+    const idx = blockBuilderAvoid.indexOf(key);
+    if (idx >= 0) blockBuilderAvoid.splice(idx, 1); else blockBuilderAvoid.push(key);
+    renderLiftsTab();
+  }));
+  const backBtn = $('#blockBackStep2', panel);
+  if (backBtn) backBtn.addEventListener('click', () => { blockBuilderStep = 1; renderLiftsTab(); });
+  const buildBtn = $('#blockBuildBtn', panel);
+  if (buildBtn) buildBtn.addEventListener('click', () => {
+    blockBuilderPreview = generateBlock({
+      focus: blockBuilderFocus,
+      priorities: blockBuilderPriorities,
+      days: blockBuilderDays,
+      equipment: blockBuilderEquipment,
+      avoid: blockBuilderAvoid,
+    });
+    blockBuilderExpandedDayIndex = 0;
+    blockBuilderViewingActive = false;
+    blockBuilderStep = 3;
+    renderLiftsTab();
+  });
+}
+
+function blockDayCardHtml(day, index, isExpanded) {
+  if (!isExpanded) {
+    return `<div class="card" data-block-day-toggle="${index}" style="cursor:pointer;margin-bottom:0.6rem;">
+      <div class="row" style="justify-content:space-between;align-items:center;">
+        <strong>${esc(day.label)}</strong>
+        <span class="muted small">${day.exercises.length} exercise${day.exercises.length === 1 ? '' : 's'}</span>
+      </div>
+    </div>`;
+  }
+  return `<div class="card" data-block-day-toggle="${index}" style="cursor:pointer;margin-bottom:0.6rem;">
+    <strong>${esc(day.label)}</strong>
+    ${day.exercises.length ? day.exercises.map((ex) => `
+      <div style="margin-top:0.6rem;padding-top:0.6rem;border-top:1px solid var(--border);">
+        <div class="row" style="justify-content:space-between;align-items:center;">
+          <span>${esc(ex.name)}</span>
+          <span class="mono" style="color:var(--accent);">${ex.sets} x ${esc(ex.reps)}</span>
+        </div>
+        ${ex.tags.length ? `<div class="chip-row" style="margin-top:0.3rem;">${ex.tags.map((t) => `<span class="muted small" style="border:1px solid var(--border);border-radius:999px;padding:0.15rem 0.5rem;">${esc(t)}</span>`).join('')}</div>` : ''}
+        <p class="muted small" style="margin:0.3rem 0 0;font-style:italic;">${esc(ex.reason)}</p>
+      </div>`).join('') : `<p class="muted small" style="margin-top:0.5rem;">No exercises matched your filters for this day — try loosening equipment or avoid options.</p>`}
+  </div>`;
+}
+
+function blockBuilderStep3Html() {
+  const block = blockBuilderPreview;
+  const focusOpt = BLOCK_FOCUS_OPTIONS.find((o) => o.key === block.focus);
+  return `<div class="card">
+    <h3>4-week ${esc(focusOpt ? focusOpt.name : block.focus)} block</h3>
+    <p class="muted small" style="margin-top:-0.5rem;">${block.priorities.length ? `Priority: ${block.priorities.map((p) => esc(MUSCLE_MAP_KEY_LABELS[p])).join(', ')}` : 'No priority areas selected'}</p>
+    <div class="chip-row" style="margin-top:0.5rem;">
+      <span class="mono muted small">${esc(blockSplitName(block.days))}</span>
+      <span class="mono muted small">${block.days} days/week</span>
+      <span class="mono muted small">${block.equipment.length ? esc(block.equipment.join(', ')) : 'Any equipment'}</span>
+      <span class="mono muted small">${block.avoid.length ? 'Avoiding: ' + esc(block.avoid.map((a) => BLOCK_AVOID_OPTIONS.find((o) => o.key === a)?.label || a).join(', ')) : 'No avoid filters'}</span>
+    </div>
+    <div class="stat-grid-2" style="margin-top:0.9rem;grid-template-columns:repeat(4,1fr);gap:0.4rem;">
+      ${BLOCK_WEEK_STRIP.map((w, i) => `<div class="stat-card-sm" style="padding:0.5rem;text-align:center;"><div class="muted small">Wk ${i + 1}</div><div style="font-size:0.78rem;font-weight:600;">${esc(w)}</div></div>`).join('')}
+    </div>
+    <p class="muted small" style="margin-top:0.6rem;">Weeks 2–3 add a set to each main lift. Week 4 (deload) drops to about half the sets at lighter, non-max effort.</p>
+  </div>
+  ${block.blockDays.map((day, i) => blockDayCardHtml(day, i, i === blockBuilderExpandedDayIndex)).join('')}
+  <div class="card">
+    ${blockBuilderViewingActive
+      ? `<button class="btn btn-ghost" id="blockCloseBtn" style="width:100%;">Close</button>`
+      : `<button class="btn btn-primary" id="blockStartBtn" style="width:100%;" ${blockBuilderStarting ? 'disabled' : ''}>${blockBuilderStarting ? 'Starting…' : 'Start block'}</button>
+         <button class="btn btn-ghost" id="blockBackStep3" style="width:100%;margin-top:0.5rem;">Back</button>`}
+    <p class="muted small" style="text-align:center;margin-top:0.6rem;margin-bottom:0;">Built from your inputs using fixed rules. No AI.</p>
+  </div>`;
+}
+
+function wireBlockBuilderStep3(panel) {
+  $$('[data-block-day-toggle]', panel).forEach((card) => card.addEventListener('click', () => {
+    const idx = Number(card.dataset.blockDayToggle);
+    blockBuilderExpandedDayIndex = blockBuilderExpandedDayIndex === idx ? -1 : idx;
+    renderLiftsTab();
+  }));
+  const backBtn = $('#blockBackStep3', panel);
+  if (backBtn) backBtn.addEventListener('click', () => { blockBuilderStep = 2; renderLiftsTab(); });
+  const closeBtn = $('#blockCloseBtn', panel);
+  if (closeBtn) closeBtn.addEventListener('click', () => {
+    showBlockBuilder = false;
+    resetBlockBuilderState();
+    renderLiftsTab();
+  });
+  const startBtn = $('#blockStartBtn', panel);
+  if (startBtn) startBtn.addEventListener('click', async () => {
+    blockBuilderStarting = true;
+    renderLiftsTab();
+    const { error } = await supabase.from('profiles').update({ active_training_block: blockBuilderPreview }).eq('id', state.user.id);
+    blockBuilderStarting = false;
+    if (error) { toast('Could not start block: ' + error.message); renderLiftsTab(); return; }
+    state.profile = { ...state.profile, active_training_block: blockBuilderPreview };
+    showBlockBuilder = false;
+    resetBlockBuilderState();
+    toast('Block started — check Training for your Week 1 plan.');
+    renderLiftsTab();
+  });
+}
+
+function renderBlockBuilder(panel) {
+  if (blockBuilderStep === 1) {
+    panel.innerHTML = blockBuilderStep1Html();
+    wireBlockBuilderStep1(panel);
+  } else if (blockBuilderStep === 2) {
+    panel.innerHTML = blockBuilderStep2Html();
+    wireBlockBuilderStep2(panel);
+  } else {
+    panel.innerHTML = blockBuilderStep3Html();
+    wireBlockBuilderStep3(panel);
+  }
 }
 
 // ── Photos tab (progress photos, uploaded to the progress-photos bucket) ──

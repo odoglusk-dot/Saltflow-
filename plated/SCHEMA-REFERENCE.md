@@ -23,9 +23,10 @@ email_reminders_opt_out boolean (default: false)
 onboarded_at          timestamptz — set once the first-time onboarding overlay finishes/is skipped
 glossary_exercises_viewed text[] (default: '{}') — distinct Exercise Glossary cue cards expanded
 learning_paths_completed text[] (default: '{}') — path ids from LEARNING_PATHS finished (also feeds Learning achievements)
+active_training_block jsonb (nullable) — the user's current generated Block Builder plan, or null if none is active; see the Block Builder section below
 created_at            timestamptz
 ```
-**Frontend reads/writes:** `id, display_name, age, sex, height_cm, activity_level, age_over_18, age_gate_shown_at, parental_consent_at, referral_code, email_reminders_opt_out, onboarded_at, glossary_exercises_viewed, learning_paths_completed`
+**Frontend reads/writes:** `id, display_name, age, sex, height_cm, activity_level, age_over_18, age_gate_shown_at, parental_consent_at, referral_code, email_reminders_opt_out, onboarded_at, glossary_exercises_viewed, learning_paths_completed, active_training_block`
 
 `age_over_18`/`age_gate_shown_at`/`parental_consent_at` are set once at
 signup (see the `#authForm` submit handler and `ensureProfileAndGoals()` in
@@ -192,6 +193,41 @@ actual health data is written only by `netlify/functions/health-sync.js`
 hash — not a Supabase session — using the service-role key server-side).
 The raw token is shown to the user exactly once, at generation time; only
 its hash is ever persisted.
+
+---
+
+### `profiles.active_training_block` — Optional Block Builder
+Added in `supabase-schema-phase23-block-builder.sql`. A single jsonb blob
+rather than a relational table, since the whole plan is generated fresh
+client-side from fixed rules every time and only ever fully replaced or
+cleared — never queried by field:
+```json
+{
+  "focus": "hypertrophy" | "strength",
+  "priorities": ["chest", "abs"],
+  "days": 4,
+  "equipment": ["Barbell"],
+  "avoid": ["heavy_spinal_load"],
+  "blockDays": [
+    { "label": "Upper A", "groups": ["push", "pull"], "exercises": [
+      { "name": "Bench Press", "muscle": "chest", "sets": 3, "reps": "8-12",
+        "tags": [], "reason": "Primary compound movement for Chest." }
+    ] }
+  ],
+  "createdDate": "2026-09-28"
+}
+```
+Generated and read entirely client-side (`generateBlock()` in
+`index.html`) from the `exercises` table's existing tags
+(`block_types`, `movement_type`, `muscle_map_key`, `avoid_flags`,
+`lengthened_bias` — see phase18). Deliberately independent of
+`training_splits`: starting or ending a block never touches the split
+picker, the split's "today's focus" card, or suggested-exercises logic.
+Rep/set numbers are this app's own program-writing convention, not a
+research citation — Hypertrophy's main-lift rep range intentionally
+reuses the same 6-12 figure already cited elsewhere
+(`CITATION_LIBRARY.hypertrophy`) rather than introducing an uncited
+second number for the same thing.
 
 ---
 
@@ -767,3 +803,10 @@ requires the two new Netlify functions
 (`health-sync-token.js`/`health-sync.js`) to be deployed — no new
 environment variables beyond the `SUPABASE_SERVICE_ROLE_KEY` this repo's
 other admin-style functions already need.
+
+For the optional Block Builder (adds `profiles.active_training_block`):
+run **`supabase-schema-phase23-block-builder.sql`** against an existing
+live database; fresh installs get it from `reset-schema.sql`. No new
+Netlify function or environment variable — the whole feature is
+client-side generation plus one jsonb column, written directly from the
+browser the same way `learning_paths_completed` is.

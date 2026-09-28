@@ -61,6 +61,10 @@ create table profiles (
   -- also feeds the Learning achievement category. See
   -- supabase-schema-phase20-learning-paths.sql.
   learning_paths_completed text[] not null default '{}',
+  -- The user's current generated training block (focus, filters, and the
+  -- resulting day-by-day exercise plan), or null if none is active. See
+  -- supabase-schema-phase23-block-builder.sql.
+  active_training_block jsonb,
   created_at timestamptz not null default now()
 );
 
