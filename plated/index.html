@@ -5511,89 +5511,11 @@ function heatmapLevel(volume, thresholds) {
   return 4;
 }
 
-function computeRegionStats(lifts, windowDays) {
-  const cutoff = windowDays ? subtractDays(localDateStr(), windowDays) : null;
-  const stats = {};
-  for (const l of lifts) {
-    if (cutoff && l.date < cutoff) continue;
-    const region = getBodyRegion(l);
-    if (!region) continue;
-    const vol = l.weight * totalReps(l);
-    const setCount = (l.reps_per_set && l.reps_per_set.length) || l.sets || 0;
-    if (!stats[region]) stats[region] = { volume: 0, sets: 0, exercises: new Map() };
-    stats[region].volume += vol;
-    stats[region].sets += setCount;
-    stats[region].exercises.set(l.exercise, (stats[region].exercises.get(l.exercise) || 0) + vol);
-  }
-  return stats;
-}
-
-// simple geometric silhouette — stylized regions, not anatomically precise
-const BODY_MAP_DECORATIVE = {
-  front: [
-    { type: 'circle', cx: 80, cy: 26, r: 16 },
-    { type: 'rect', x: 72, y: 40, width: 16, height: 10, rx: 4 },
-    { type: 'rect', x: 50, y: 232, width: 22, height: 54, rx: 8 },
-    { type: 'rect', x: 88, y: 232, width: 22, height: 54, rx: 8 },
-  ],
-  back: [
-    { type: 'circle', cx: 80, cy: 26, r: 16 },
-    { type: 'rect', x: 72, y: 40, width: 16, height: 10, rx: 4 },
-  ],
-};
-const BODY_MAP_REGIONS = {
-  front: [
-    { region: 'shoulders', shapes: [{ type: 'ellipse', cx: 42, cy: 64, rx: 16, ry: 13 }, { type: 'ellipse', cx: 118, cy: 64, rx: 16, ry: 13 }] },
-    { region: 'chest', shapes: [{ type: 'rect', x: 44, y: 70, width: 72, height: 42, rx: 10 }] },
-    { region: 'biceps', shapes: [{ type: 'rect', x: 18, y: 70, width: 18, height: 52, rx: 8 }, { type: 'rect', x: 124, y: 70, width: 18, height: 52, rx: 8 }] },
-    { region: 'forearms', shapes: [{ type: 'rect', x: 14, y: 124, width: 16, height: 50, rx: 8 }, { type: 'rect', x: 130, y: 124, width: 16, height: 50, rx: 8 }] },
-    { region: 'abs', shapes: [{ type: 'rect', x: 50, y: 114, width: 60, height: 46, rx: 8 }] },
-    { region: 'quads', shapes: [{ type: 'rect', x: 46, y: 162, width: 30, height: 70, rx: 10 }, { type: 'rect', x: 84, y: 162, width: 30, height: 70, rx: 10 }] },
-  ],
-  back: [
-    { region: 'back', shapes: [{ type: 'rect', x: 44, y: 64, width: 72, height: 68, rx: 10 }] },
-    { region: 'triceps', shapes: [{ type: 'rect', x: 18, y: 70, width: 18, height: 60, rx: 8 }, { type: 'rect', x: 124, y: 70, width: 18, height: 60, rx: 8 }] },
-    { region: 'glutes', shapes: [{ type: 'rect', x: 48, y: 134, width: 64, height: 34, rx: 14 }] },
-    { region: 'hamstrings', shapes: [{ type: 'rect', x: 46, y: 170, width: 30, height: 56, rx: 10 }, { type: 'rect', x: 84, y: 170, width: 30, height: 56, rx: 10 }] },
-    { region: 'calves', shapes: [{ type: 'rect', x: 48, y: 230, width: 26, height: 54, rx: 10 }, { type: 'rect', x: 86, y: 230, width: 26, height: 54, rx: 10 }] },
-  ],
-};
-
-function bodyMapShapeSvg(shape, { fill, stroke, strokeWidth, region }) {
-  const attrs = `fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}"${region ? ` data-region="${region}" class="body-map-region"` : ''}`;
-  if (shape.type === 'circle') return `<circle cx="${shape.cx}" cy="${shape.cy}" r="${shape.r}" ${attrs}></circle>`;
-  if (shape.type === 'ellipse') return `<ellipse cx="${shape.cx}" cy="${shape.cy}" rx="${shape.rx}" ry="${shape.ry}" ${attrs}></ellipse>`;
-  return `<rect x="${shape.x}" y="${shape.y}" width="${shape.width}" height="${shape.height}" rx="${shape.rx}" ${attrs}></rect>`;
-}
-
-function bodyMapSvg(view, regionLevels, selectedRegion) {
-  const decorative = BODY_MAP_DECORATIVE[view]
-    .map((s) => bodyMapShapeSvg(s, { fill: 'var(--border)', stroke: 'var(--border)', strokeWidth: 1 }))
-    .join('');
-  const regions = BODY_MAP_REGIONS[view]
-    .map((r) => {
-      const level = regionLevels[r.region] ?? 0;
-      const isSelected = selectedRegion === r.region;
-      return r.shapes
-        .map((shape) => bodyMapShapeSvg(shape, {
-          fill: HEATMAP_LEVELS[level],
-          stroke: isSelected ? 'var(--accent)' : 'var(--border)',
-          strokeWidth: isSelected ? 2 : 1,
-          region: r.region,
-        }))
-        .join('');
-    })
-    .join('');
-  return `<svg viewBox="0 0 160 300" class="body-map-svg">${decorative}${regions}</svg>`;
-}
-
 // ── Weekly hard sets per muscle group ────────────────────────────────────
-// A finer-grained 14-key taxonomy than body_region above (splits
-// "shoulders" into delts, "back" into lats/traps/lowerback, adds
-// obliques) — see supabase-schema-phase18-exercise-tags.sql. Drives this
-// card only; the existing muscleMapHtml() below still uses body_region
-// until the Option B muscle map rebuild replaces it with this same
-// calculation.
+// A finer-grained 14-key taxonomy than body_region (splits "shoulders"
+// into delts, "back" into lats/traps/lowerback, adds obliques) — see
+// supabase-schema-phase18-exercise-tags.sql. Feeds both this card and the
+// sculpted Muscle Map further below, from the same calculation.
 const MUSCLE_MAP_KEYS = ['chest', 'delts', 'biceps', 'triceps', 'forearms', 'abs', 'obliques', 'quads', 'calves', 'traps', 'lats', 'lowerback', 'glutes', 'hamstrings'];
 const MUSCLE_MAP_KEY_LABELS = {
   chest: 'Chest', delts: 'Delts', biceps: 'Biceps', triceps: 'Triceps', forearms: 'Forearms',
@@ -5623,12 +5545,18 @@ function workingSetCount(lift) {
   return count;
 }
 
-function computeWeeklyHardSetsByMuscle(lifts, exercises) {
-  const cutoff = subtractDays(localDateStr(), 6); // rolling 7-day window, inclusive of today
+// windowDays: 7 (default, rolling weekly window inclusive of today), a
+// different number of days (e.g. 30), or null for all-time. Shared by the
+// Weekly Training Volume card (always 7, a weekly guideline needs a
+// weekly window) and the sculpted Muscle Map below (which offers all
+// three) — one calculation, not two, per the product decision that the
+// map must be "driven by the item 5 calculation, not a second one."
+function computeWeeklyHardSetsByMuscle(lifts, exercises, windowDays = 7) {
+  const cutoff = windowDays ? subtractDays(localDateStr(), windowDays - 1) : null;
   const totals = {};
   MUSCLE_MAP_KEYS.forEach((k) => { totals[k] = 0; });
   for (const l of lifts) {
-    if (l.date < cutoff) continue;
+    if (cutoff && l.date < cutoff) continue;
     const def = exercises.find((e) => e.name.toLowerCase() === l.exercise.trim().toLowerCase());
     // An exercise with no muscle_map_key (not in the library, or a custom
     // typed-in name) can't be attributed to a muscle — skipped rather than
@@ -5678,14 +5606,117 @@ function wireWeeklyHardSetsEvents(panel) {
 
 const MUSCLE_MAP_WINDOWS = [[7, '7 Days'], [30, '30 Days'], [null, 'All Time']];
 let muscleMapWindow = 7;
-let muscleMapSelectedRegion = null;
+let muscleMapSelectedRegion = null; // a MUSCLE_MAP_KEYS key now, not a BODY_REGIONS one
+
+// ── Sculpted Muscle Map (Option B) ───────────────────────────────────────
+// Every path below is the RIGHT half of the body, authored against a
+// viewBox="0 0 200 420"; the left half is the same path mirrored with
+// transform="translate(200,0) scale(-1,1)" rather than a second set of
+// coordinates. head/neck are already centered on the body's midline
+// (x=100), so mirroring them would be a no-op — only base and each
+// muscle (genuinely asymmetric) get drawn twice.
+const MUSCLE_MAP_HEAD = { cx: 100, cy: 34, rx: 17, ry: 21 };
+const MUSCLE_MAP_NECK = { x: 92, y: 52, w: 16, h: 14 };
+const MUSCLE_MAP_BASE_PATH = 'M101,60 L128,68 Q152,68 158,92 L162,152 L168,210 Q168,224 156,224 L146,214 L144,154 L138,118 L134,150 L130,186 L132,204 Q142,250 134,296 L132,384 Q134,406 122,406 L106,406 Q104,340 108,300 L102,232 L101,190 Z';
+const MUSCLE_MAP_DELT_PATH = 'M128,70 Q148,68 154,88 Q156,100 148,108 L138,106 Q136,90 126,80 Z';
+const MUSCLE_MAP_ARM_PATH = 'M138,108 L150,108 Q158,126 156,148 L145,150 Q141,128 138,108 Z';
+const MUSCLE_MAP_FOREARM_PATH = 'M145,152 L157,150 Q165,180 163,210 L153,212 Q147,182 145,152 Z';
+
+const MUSCLE_MAP_FRONT_PARTS = [
+  { key: 'traps', d: 'M110,60 L126,70 L120,77 L104,68 Z' },
+  { key: 'delts', d: MUSCLE_MAP_DELT_PATH },
+  { key: 'biceps', d: MUSCLE_MAP_ARM_PATH },
+  { key: 'forearms', d: MUSCLE_MAP_FOREARM_PATH },
+  { key: 'chest', d: 'M101,74 L127,80 Q138,94 130,110 Q116,117 101,111 Z' },
+  { key: 'abs', d: 'M102,115 L110,115 L110,128 L102,128 Z M102,131 L110,131 L110,145 L102,145 Z M102,148 L110,148 L110,162 L102,162 Z M102,165 L109,165 L109,178 L102,178 Z' },
+  { key: 'obliques', d: 'M113,117 L128,113 L132,146 L124,172 L113,176 Z' },
+  { key: 'quads', d: 'M102,198 L128,192 Q138,240 130,292 L108,294 Q100,250 102,198 Z' },
+  { key: 'calves', d: 'M108,302 L128,298 Q130,340 125,382 L112,382 Q105,340 108,302 Z' },
+];
+const MUSCLE_MAP_BACK_PARTS = [
+  { key: 'traps', d: 'M101,54 L112,60 L130,72 L124,92 L101,126 Z' },
+  { key: 'delts', d: MUSCLE_MAP_DELT_PATH },
+  { key: 'triceps', d: MUSCLE_MAP_ARM_PATH },
+  { key: 'forearms', d: MUSCLE_MAP_FOREARM_PATH },
+  { key: 'lats', d: 'M108,112 L124,96 Q136,112 131,140 L116,168 L104,150 Z' },
+  { key: 'lowerback', d: 'M101,146 L112,150 L114,178 L101,184 Z' },
+  { key: 'glutes', d: 'M101,182 L128,178 Q140,198 126,218 L101,220 Z' },
+  { key: 'hamstrings', d: 'M102,222 L128,220 Q136,254 130,292 L108,294 Q100,258 102,222 Z' },
+  { key: 'calves', d: 'M108,300 L128,296 Q132,336 125,376 L112,376 Q104,336 108,300 Z' },
+];
+
+const MUSCLE_MAP_LEGEND = [
+  { color: '#2B2E32', label: '0' },
+  { color: '#5A4F36', label: '1-5' },
+  { color: '#8A7443', label: '6-9' },
+  { color: '#C6A15B', label: '10-20' },
+  { color: '#E8CB88', label: '21+' },
+];
+function muscleMapHeatColor(sets) {
+  const rounded = Math.round(sets);
+  if (rounded <= 0) return MUSCLE_MAP_LEGEND[0].color;
+  if (rounded <= 5) return MUSCLE_MAP_LEGEND[1].color;
+  if (rounded <= 9) return MUSCLE_MAP_LEGEND[2].color;
+  if (rounded <= 20) return MUSCLE_MAP_LEGEND[3].color;
+  return MUSCLE_MAP_LEGEND[4].color;
+}
+
+function muscleMapPartSvg(part, totals, selectedKey) {
+  const fill = muscleMapHeatColor(totals[part.key] || 0);
+  const isSelected = selectedKey === part.key;
+  // Two overlapping copies of the same path: one carries the heat color
+  // and the tap target, the other — pointer-events disabled — carries the
+  // diagonal light/dark shading gradient on top, giving each muscle a
+  // sculpted look instead of a flat color fill.
+  return `
+    <path d="${part.d}" fill="${fill}" stroke="${isSelected ? 'var(--accent)' : '#0E0F10'}" stroke-width="${isSelected ? '1.6' : '0.9'}" stroke-linejoin="round" class="body-map-region" data-muscle-key="${part.key}"></path>
+    <path d="${part.d}" fill="url(#muscleMapShade)" pointer-events="none"></path>`;
+}
+
+function muscleMapBodySvg(parts, totals, selectedKey, viewName) {
+  const baseAttrs = 'fill="#1B1D20" stroke="#33373B" stroke-width="1"';
+  const base = `<path d="${MUSCLE_MAP_BASE_PATH}" ${baseAttrs}></path>`;
+  const muscles = parts.map((part) => {
+    const right = muscleMapPartSvg(part, totals, selectedKey);
+    const left = `<g transform="translate(200,0) scale(-1,1)">${muscleMapPartSvg(part, totals, selectedKey)}</g>`;
+    return right + left;
+  }).join('');
+  return `<svg viewBox="0 0 200 420" class="body-map-svg">
+    <defs>
+      <linearGradient id="muscleMapShade-${viewName}" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#fff" stop-opacity="0.22"></stop>
+        <stop offset="0.55" stop-color="#fff" stop-opacity="0"></stop>
+        <stop offset="1" stop-color="#000" stop-opacity="0.35"></stop>
+      </linearGradient>
+    </defs>
+    <ellipse cx="${MUSCLE_MAP_HEAD.cx}" cy="${MUSCLE_MAP_HEAD.cy}" rx="${MUSCLE_MAP_HEAD.rx}" ry="${MUSCLE_MAP_HEAD.ry}" ${baseAttrs}></ellipse>
+    <rect x="${MUSCLE_MAP_NECK.x}" y="${MUSCLE_MAP_NECK.y}" width="${MUSCLE_MAP_NECK.w}" height="${MUSCLE_MAP_NECK.h}" ${baseAttrs}></rect>
+    ${base}
+    <g transform="translate(200,0) scale(-1,1)">${base}</g>
+    ${muscles.replace(/url\(#muscleMapShade\)/g, `url(#muscleMapShade-${viewName})`)}
+  </svg>`;
+}
+
+function muscleMapReadoutText(key, sets, windowDays) {
+  const label = MUSCLE_MAP_KEY_LABELS[key];
+  const rounded = Math.round(sets * 10) / 10;
+  if (windowDays === 7) {
+    if (rounded <= 0) return `${label}: no sets logged this week yet.`;
+    const inRange = rounded >= WEEKLY_SETS_GUIDELINE.low && rounded <= WEEKLY_SETS_GUIDELINE.high;
+    const rangeNote = inRange
+      ? ` (within the commonly cited ${WEEKLY_SETS_GUIDELINE.low}-${WEEKLY_SETS_GUIDELINE.high} set range)`
+      : rounded < WEEKLY_SETS_GUIDELINE.low
+      ? ` (below the commonly cited ${WEEKLY_SETS_GUIDELINE.low}-${WEEKLY_SETS_GUIDELINE.high} set range)`
+      : ` (above the commonly cited ${WEEKLY_SETS_GUIDELINE.low}-${WEEKLY_SETS_GUIDELINE.high} set range)`;
+    return `${label}: ${rounded} sets this week${rangeNote}.`;
+  }
+  const periodLabel = windowDays === 30 ? 'in the last 30 days' : 'all time';
+  return `${label}: ${rounded} sets ${periodLabel}.`;
+}
 
 function muscleMapHtml(lifts) {
-  const stats = computeRegionStats(lifts, muscleMapWindow);
-  const thresholds = volumeQuantileThresholds(Object.values(stats).map((s) => s.volume).filter((v) => v > 0));
-  const regionLevels = {};
-  for (const region of BODY_REGIONS) regionLevels[region] = heatmapLevel(stats[region]?.volume || 0, thresholds);
-  const selectedStats = muscleMapSelectedRegion ? stats[muscleMapSelectedRegion] : null;
+  const totals = computeWeeklyHardSetsByMuscle(lifts, state.exercises, muscleMapWindow);
+  const anyData = Object.values(totals).some((v) => v > 0);
 
   return `
     <div class="card">
@@ -5696,36 +5727,24 @@ function muscleMapHtml(lifts) {
       <div class="body-map-grid">
         <div class="body-map-col">
           <div class="muted small body-map-label">Front</div>
-          ${bodyMapSvg('front', regionLevels, muscleMapSelectedRegion)}
+          ${muscleMapBodySvg(MUSCLE_MAP_FRONT_PARTS, totals, muscleMapSelectedRegion, 'front')}
         </div>
         <div class="body-map-col">
           <div class="muted small body-map-label">Back</div>
-          ${bodyMapSvg('back', regionLevels, muscleMapSelectedRegion)}
+          ${muscleMapBodySvg(MUSCLE_MAP_BACK_PARTS, totals, muscleMapSelectedRegion, 'back')}
         </div>
       </div>
-      <div class="heatmap-legend">
-        <span>Less</span>
-        ${HEATMAP_LEVELS.map((c) => `<span class="heatmap-swatch" style="background:${c};"></span>`).join('')}
-        <span>More</span>
+      <div class="heatmap-legend" style="flex-wrap:wrap;">
+        ${MUSCLE_MAP_LEGEND.map((l) => `<span class="legend-item"><span class="legend-swatch" style="background:${l.color};"></span>${l.label}</span>`).join('')}
       </div>
+      ${!anyData ? `<p class="muted small" style="text-align:center;margin-top:0.5rem;">No training logged yet — log your first lift to start filling this in.</p>` : ''}
       ${muscleMapSelectedRegion ? `
       <div class="muscle-map-detail">
         <div class="row" style="justify-content:space-between;align-items:center;">
-          <strong>${BODY_REGION_LABELS[muscleMapSelectedRegion]}</strong>
+          <strong>${MUSCLE_MAP_KEY_LABELS[muscleMapSelectedRegion]}</strong>
           <button class="btn btn-sm btn-ghost" id="mmCloseRegion">✕</button>
         </div>
-        ${selectedStats ? `
-          <div class="row" style="gap:1.25rem;margin:0.5rem 0;">
-            <div><div class="stat-num" style="font-size:1.1rem;">${Math.round(selectedStats.volume).toLocaleString()}</div><div class="muted small">lb volume</div></div>
-            <div><div class="stat-num" style="font-size:1.1rem;">${selectedStats.sets}</div><div class="muted small">sets</div></div>
-          </div>
-          <div class="muted small" style="margin-bottom:0.25rem;">Exercises</div>
-          ${[...selectedStats.exercises.entries()].sort((a, b) => b[1] - a[1]).map(([ex, vol]) => `
-            <div class="row" style="justify-content:space-between;">
-              <span style="color:var(--accent);">${esc(ex)}</span>
-              <span class="mono muted">${Math.round(vol).toLocaleString()} lb</span>
-            </div>`).join('')}
-        ` : `<p class="muted small">No ${muscleMapWindow ? `${muscleMapWindow}-day` : 'all-time'} volume for this region yet.</p>`}
+        <p style="margin:0.4rem 0 0;">${esc(muscleMapReadoutText(muscleMapSelectedRegion, totals[muscleMapSelectedRegion] || 0, muscleMapWindow))}</p>
       </div>` : ''}
     </div>
   `;
@@ -5737,8 +5756,8 @@ function wireMuscleMapEvents(panel) {
     muscleMapSelectedRegion = null;
     renderLiftsTab();
   }));
-  $$('.body-map-region', panel).forEach((el) => el.addEventListener('click', () => {
-    muscleMapSelectedRegion = el.dataset.region;
+  $$('[data-muscle-key]', panel).forEach((el) => el.addEventListener('click', () => {
+    muscleMapSelectedRegion = el.dataset.muscleKey;
     renderLiftsTab();
   }));
   const closeBtn = $('#mmCloseRegion', panel);
