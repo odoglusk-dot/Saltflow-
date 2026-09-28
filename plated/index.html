@@ -5166,6 +5166,37 @@ function e1RM(weight, reps) {
   return Math.round(weight * (1 + reps / 30));
 }
 
+// Static warm-up ramp — a general pattern (percentage of working weight,
+// decreasing reps as the weight climbs), not personalized and not AI.
+// Rounds each step to the nearest 5 lb, a typical barbell plate
+// increment; still a reasonable rough guide for dumbbell/machine work.
+const WARMUP_RAMP_STEPS = [
+  { pct: 0.4, reps: 8 },
+  { pct: 0.6, reps: 5 },
+  { pct: 0.75, reps: 3 },
+  { pct: 0.85, reps: 2 },
+  { pct: 0.9, reps: 1 },
+];
+function warmupRampFor(workingWeight) {
+  if (!workingWeight || workingWeight <= 0) return [];
+  return WARMUP_RAMP_STEPS.map((step) => ({
+    pct: Math.round(step.pct * 100),
+    weight: Math.max(5, Math.round((workingWeight * step.pct) / 5) * 5),
+    reps: step.reps,
+  }));
+}
+function warmupRampHtml(workingWeight) {
+  const steps = warmupRampFor(workingWeight);
+  if (!steps.length) return `<p class="muted small" style="margin:0;">Enter a working weight above first.</p>`;
+  return `
+    <ul class="cue-list" style="margin:0;">
+      ${steps.map((s) => `<li><strong>${s.pct}%:</strong> ${s.weight} lb × ${s.reps} rep${s.reps === 1 ? '' : 's'}</li>`).join('')}
+      <li><strong>100%:</strong> ${workingWeight} lb — your working sets (not warm-up)</li>
+    </ul>
+    <p class="muted small" style="margin:0.4rem 0 0;">A general ramp-up pattern, not personalized — skip a step or two for lighter/isolation work, or adjust based on how you feel.</p>
+  `;
+}
+
 // total reps across all sets — uses reps_per_set if available (allows
 // different reps per set), falls back to sets × reps for older entries
 function totalReps(l) {
@@ -5373,6 +5404,7 @@ let liftForm = {
   repsPerSet: ['5', '5', '5'], warmupPerSet: [false, false, false],
   date: localDateStr(), isSuperset: false, supersetGroup: '',
 };
+let showWarmupRamp = false;
 let liftFormError = '';
 let liftFormSaving = false;
 let prBanner = null; // { exercise, weight, improvement } — dismissed manually, not auto-timed
@@ -6302,6 +6334,8 @@ function renderLiftLog(panel) {
         <div class="field"><label>Weight (lb)</label><input class="input mono" id="lift_weight" type="number" value="${esc(liftForm.weight)}"></div>
         <div class="field"><label>Sets</label><input class="input mono" id="lift_sets" type="number" min="1" max="20" value="${liftForm.sets}"></div>
       </div>
+      <button type="button" class="btn btn-sm btn-ghost" id="warmupRampToggle" style="margin-bottom:0.75rem;">${showWarmupRamp ? 'Hide warm-up ramp' : 'Suggest a warm-up ramp'}</button>
+      ${showWarmupRamp ? `<div class="field" style="background:var(--surface-2);border-radius:8px;padding:0.6rem 0.75rem;margin-bottom:0.75rem;"><div id="warmupRampContent">${warmupRampHtml(Number(liftForm.weight) || 0)}</div></div>` : ''}
       <div class="field">
         <label>Reps per set (can vary set to set)</label>
         <div class="reps-per-set-row" id="liftRepsRow">
@@ -6441,7 +6475,17 @@ function renderLiftLog(panel) {
   if (mgSel) mgSel.addEventListener('change', (e) => { liftForm.muscleGroup = e.target.value; });
   const brSel = $('#lift_bodyRegion');
   if (brSel) brSel.addEventListener('change', (e) => { liftForm.bodyRegion = e.target.value; });
-  $('#lift_weight').addEventListener('input', (e) => { liftForm.weight = e.target.value; });
+  $('#lift_weight').addEventListener('input', (e) => {
+    liftForm.weight = e.target.value;
+    // Patch the ramp content directly rather than a full renderLiftsTab()
+    // — the same lesson as the exercise field: a full panel rebuild on
+    // every keystroke would tear down whichever input the user is
+    // actively typing in.
+    const rampContent = $('#warmupRampContent', panel);
+    if (rampContent) rampContent.innerHTML = warmupRampHtml(Number(e.target.value) || 0);
+  });
+  const warmupToggle = $('#warmupRampToggle', panel);
+  if (warmupToggle) warmupToggle.addEventListener('click', () => { showWarmupRamp = !showWarmupRamp; renderLiftsTab(); });
   $('#lift_sets').addEventListener('change', (e) => {
     const count = Math.max(1, Math.min(20, Number(e.target.value) || 1));
     const fillVal = liftForm.repsPerSet.length ? liftForm.repsPerSet[liftForm.repsPerSet.length - 1] : '5';
@@ -6560,7 +6604,8 @@ function renderLiftDetail(panel) {
   const prs = computeLiftPRs(state.lifts);
   const pr = prs[exercise];
   const plateaued = detectPlateau(history);
-  const bestE1RM = history.length ? Math.max(...history.map((l) => e1RM(l.weight, l.reps))) : 0;
+  const bestE1RMEntry = history.reduce((best, l) => (e1RM(l.weight, l.reps) > (best ? e1RM(best.weight, best.reps) : -1) ? l : best), null);
+  const bestE1RM = bestE1RMEntry ? e1RM(bestE1RMEntry.weight, bestE1RMEntry.reps) : 0;
   const muscleGroup = history.length ? getMuscleGroup(history[history.length - 1]) : null;
   const prBodyweight = pr ? bodyweightAsOf(pr.date, state.weightLog) : null;
   const currentBW = latestBodyweightEntry(state.weightLog);
@@ -6583,6 +6628,7 @@ function renderLiftDetail(panel) {
     ${bestE1RM > 0 ? `<div class="card">
       <h3>Estimated 1-Rep Max</h3>
       <div class="stat-num">${bestE1RM} <span class="muted small">lb (Epley estimate)</span></div>
+      ${bestE1RMEntry.reps > 10 ? `<p class="muted small" style="margin-top:0.35rem;">Estimated from a ${bestE1RMEntry.reps}-rep set — 1RM estimates get less reliable above about 10 reps, so treat this as rough.</p>` : ''}
     </div>` : ''}
     ${strengthScore !== null ? `<div class="card">
       <h3>Strength Score</h3>
