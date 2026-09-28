@@ -134,9 +134,16 @@ create table food_logs (
   carbs_g numeric not null,
   fat_g numeric not null,
   source text not null default 'manual' check (
-    source in ('manual', 'ai_text', 'ai_photo', 'favorite', 'common')
+    source in ('manual', 'ai_text', 'ai_photo', 'favorite', 'common', 'barcode')
   ),
   photo_path text,
+  -- Only ever populated by a barcode scan (Open Food Facts) — no other
+  -- logging path collects sugar today. See
+  -- supabase-schema-phase21-barcode-scanning.sql.
+  sugar_g numeric,
+  -- The scanned code, kept even when the lookup fails and the entry gets
+  -- finished manually, so it isn't lost.
+  barcode text,
   logged_at timestamptz not null default now(),
   created_at timestamptz not null default now()
 );

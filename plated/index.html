@@ -2323,6 +2323,11 @@ function updateBottomNav() {
 const TABS_WITHOUT_SECONDARY_NAV = new Set(['dashboard', 'profile']);
 
 function setActiveTab(tab) {
+  // Navigating away from Log Food while the barcode camera is running
+  // would otherwise leave it active in the background (setActiveTab only
+  // toggles CSS visibility, it doesn't destroy the panel's DOM) — a real
+  // privacy/battery concern, not just a cosmetic one.
+  if (state.activeTab === 'log' && tab !== 'log' && barcodeScanning) stopBarcodeScan();
   state.activeTab = tab;
   $$('.tab-btn').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   $$('.tab-panel').forEach((p) => p.classList.toggle('active', p.dataset.tab === tab));
@@ -3470,9 +3475,10 @@ async function deleteLog(id) {
   renderAll();
 }
 
-async function logFood({ food_name, calories, protein_g, carbs_g, fat_g, source, photo_path }) {
+async function logFood({ food_name, calories, protein_g, carbs_g, fat_g, source, photo_path, sugar_g, barcode }) {
   const { error } = await supabase.from('food_logs').insert({
     user_id: state.user.id, food_name, calories, protein_g, carbs_g, fat_g, source, photo_path: photo_path || null,
+    sugar_g: sugar_g ?? null, barcode: barcode || null,
   });
   if (error) return toast('Could not log food: ' + error.message);
   await loadHistory();
@@ -3592,13 +3598,18 @@ function renderLogTab() {
     <div class="sub-nav">
       <button class="btn ${logSubTab === 'ai' ? 'btn-primary' : ''}" data-sub="ai">Describe It</button>
       <button class="btn ${logSubTab === 'photo' ? 'btn-primary' : ''}" data-sub="photo">Snap a Photo</button>
+      <button class="btn ${logSubTab === 'barcode' ? 'btn-primary' : ''}" data-sub="barcode">Scan Barcode</button>
       <button class="btn ${logSubTab === 'common' ? 'btn-primary' : ''}" data-sub="common">Common Foods</button>
       <button class="btn ${logSubTab === 'manual' ? 'btn-primary' : ''}" data-sub="manual">Manual Entry</button>
       <button class="btn ${logSubTab === 'favorites' ? 'btn-primary' : ''}" data-sub="favorites">Favorites</button>
     </div>
     <div id="logSubPanel"></div>
   `;
-  $$('[data-sub]', panel).forEach((btn) => btn.addEventListener('click', () => { logSubTab = btn.dataset.sub; renderLogTab(); }));
+  $$('[data-sub]', panel).forEach((btn) => btn.addEventListener('click', () => {
+    if (logSubTab === 'barcode' && btn.dataset.sub !== 'barcode') stopBarcodeScan();
+    logSubTab = btn.dataset.sub;
+    renderLogTab();
+  }));
   renderLogSubPanel();
 }
 
@@ -3663,6 +3674,162 @@ async function saveFavorite(f) {
   toast(`Saved "${f.food_name}" to favorites`);
   await loadFavorites();
   renderAll();
+}
+
+// ── Barcode scanning (free tier — no AI) ────────────────────────────────
+// iOS Safari has no native BarcodeDetector, so scanning goes through
+// ZXing (loaded lazily from a CDN only when this sub-tab is opened, same
+// pattern as ensureChartJs() for the session-analysis charts) rather than
+// a built-in browser API. Lookups hit Open Food Facts directly per scan —
+// it's free with no rate limit that matters at this app's scale, so
+// there's no cache table here (see the phase21 migration's comment).
+let zxingLoadPromise = null;
+function ensureZXing() {
+  if (window.ZXing) return Promise.resolve();
+  if (zxingLoadPromise) return zxingLoadPromise;
+  zxingLoadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';
+    script.onload = resolve;
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+  return zxingLoadPromise;
+}
+
+let barcodeReaderInstance = null;
+let barcodeScanning = false;
+let barcodeStartError = '';
+let barcodeLookupLoading = false;
+let barcodeLookupError = '';
+let barcodeResult = null; // { food_name, calories, protein_g, carbs_g, fat_g, sugar_g, servingLabel, barcode }
+let barcodeNotFoundCode = null;
+// Carries the scanned code into Manual Entry when a lookup comes back
+// empty, so the user doesn't have to remember/re-scan it — see
+// renderLogSubPanel()'s 'manual' branch.
+let pendingBarcodeForManualEntry = null;
+
+function stopBarcodeScan() {
+  if (barcodeReaderInstance) {
+    try { barcodeReaderInstance.reset(); } catch { /* already stopped */ }
+    barcodeReaderInstance = null;
+  }
+  barcodeScanning = false;
+}
+
+async function startBarcodeScan() {
+  barcodeStartError = '';
+  barcodeLookupError = '';
+  barcodeResult = null;
+  barcodeNotFoundCode = null;
+  try {
+    await ensureZXing();
+  } catch {
+    barcodeStartError = 'Could not load the barcode scanner — check your connection and try again.';
+    renderLogSubPanel();
+    return;
+  }
+  barcodeScanning = true;
+  renderLogSubPanel();
+  try {
+    barcodeReaderInstance = new window.ZXing.BrowserMultiFormatReader();
+    await barcodeReaderInstance.decodeFromConstraints(
+      { video: { facingMode: 'environment' } },
+      'barcodeVideoEl',
+      (result) => { if (result) handleBarcodeDetected(result.getText()); }
+      // A NotFoundException fires continuously while no barcode is in
+      // frame — that's the library's normal "still looking" signal, not
+      // an error, so it's deliberately ignored here.
+    );
+  } catch (err) {
+    barcodeScanning = false;
+    barcodeStartError = err?.name === 'NotAllowedError'
+      ? 'Camera access was denied — allow camera access in your browser settings to scan a barcode.'
+      : 'Could not start the camera for scanning.';
+    renderLogSubPanel();
+  }
+}
+
+// Open Food Facts prefers per-serving nutriments when the product has
+// them; falls back to per-100g otherwise, labeled accordingly so the
+// user can tell which basis they're confirming/adjusting.
+function normalizeOpenFoodFactsProduct(product) {
+  const n = product.nutriments || {};
+  const hasPerServing = n['energy-kcal_serving'] != null;
+  const round1 = (v) => Math.round((Number(v) || 0) * 10) / 10;
+  return {
+    food_name: product.product_name || product.generic_name || 'Scanned item',
+    servingLabel: hasPerServing ? (product.serving_size || 'labeled serving') : 'per 100g',
+    calories: Math.round(Number(hasPerServing ? n['energy-kcal_serving'] : n['energy-kcal_100g']) || 0),
+    protein_g: round1(hasPerServing ? n['proteins_serving'] : n['proteins_100g']),
+    carbs_g: round1(hasPerServing ? n['carbohydrates_serving'] : n['carbohydrates_100g']),
+    fat_g: round1(hasPerServing ? n['fat_serving'] : n['fat_100g']),
+    sugar_g: round1(hasPerServing ? n['sugars_serving'] : n['sugars_100g']),
+  };
+}
+
+async function handleBarcodeDetected(code) {
+  stopBarcodeScan();
+  barcodeLookupLoading = true;
+  barcodeLookupError = '';
+  renderLogSubPanel();
+  try {
+    const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json`);
+    const data = await res.json();
+    if (data.status !== 1 || !data.product) {
+      barcodeNotFoundCode = code;
+      barcodeResult = null;
+    } else {
+      barcodeResult = { ...normalizeOpenFoodFactsProduct(data.product), barcode: code };
+    }
+  } catch {
+    barcodeLookupError = 'Could not look up that barcode — check your connection and try again.';
+  } finally {
+    barcodeLookupLoading = false;
+    renderLogSubPanel();
+  }
+}
+
+function barcodeResultCardHtml(result) {
+  return `
+    <div class="card" id="barcodeResult">
+      <h3>Found it</h3>
+      <p class="muted">${esc(result.servingLabel)} · from Open Food Facts, not AI</p>
+      <div class="field"><label>Food</label><input class="input" id="bc_name" value="${esc(result.food_name)}"></div>
+      <div class="row">
+        <div class="field"><label>Calories</label><input class="input mono" id="bc_cal" type="number" value="${round(result.calories)}"></div>
+        <div class="field"><label>Protein (g)</label><input class="input mono" id="bc_pro" type="number" value="${round(result.protein_g)}"></div>
+        <div class="field"><label>Carbs (g)</label><input class="input mono" id="bc_carb" type="number" value="${round(result.carbs_g)}"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>Fat (g)</label><input class="input mono" id="bc_fat" type="number" value="${round(result.fat_g)}"></div>
+        <div class="field"><label>Sugar (g)</label><input class="input mono" id="bc_sugar" type="number" value="${round(result.sugar_g)}"></div>
+      </div>
+      <p class="muted small">Confirm this matches the serving you actually had — adjust any field before logging.</p>
+      <div class="row">
+        <button class="btn btn-primary" id="logBarcodeBtn">Log It</button>
+        <button class="btn" id="favBarcodeBtn">Save to Quick Add</button>
+        <button class="btn btn-ghost" id="rescanBarcodeBtn">Scan Another</button>
+      </div>
+    </div>`;
+}
+
+function wireBarcodeResultCard(barcode) {
+  const readValues = () => ({
+    food_name: $('#bc_name').value.trim() || 'Food',
+    calories: Number($('#bc_cal').value) || 0,
+    protein_g: Number($('#bc_pro').value) || 0,
+    carbs_g: Number($('#bc_carb').value) || 0,
+    fat_g: Number($('#bc_fat').value) || 0,
+    sugar_g: Number($('#bc_sugar').value) || 0,
+  });
+  $('#logBarcodeBtn')?.addEventListener('click', () => {
+    logFood({ ...readValues(), source: 'barcode', barcode });
+    barcodeResult = null;
+    toast('Logged.');
+  });
+  $('#favBarcodeBtn')?.addEventListener('click', () => saveFavorite(readValues()));
+  $('#rescanBarcodeBtn')?.addEventListener('click', () => { barcodeResult = null; startBarcodeScan(); });
 }
 
 function renderLogSubPanel() {
@@ -3801,6 +3968,39 @@ function renderLogSubPanel() {
         btn.disabled = false; btn.textContent = 'Estimate Macros';
       }
     });
+  } else if (logSubTab === 'barcode') {
+    el.innerHTML = `
+      <div class="card">
+        <h3>Scan a barcode</h3>
+        <p class="muted">Free, no AI — looks up packaged foods via Open Food Facts.</p>
+        ${barcodeScanning ? `
+          <video id="barcodeVideoEl" style="width:100%;border-radius:8px;background:#000;" playsinline muted></video>
+          <button class="btn btn-block" id="stopBarcodeBtn" style="margin-top:0.75rem;">Stop Scanning</button>
+        ` : `
+          <button class="btn btn-primary" id="startBarcodeBtn">Start Scanner</button>
+        `}
+        ${barcodeStartError ? `<p class="muted small" style="color:var(--danger);margin-top:0.5rem;">${esc(barcodeStartError)}</p>` : ''}
+        ${barcodeLookupLoading ? `<p class="muted small" style="margin-top:0.5rem;"><span class="spinner spinner-sm"></span> Looking up that barcode…</p>` : ''}
+        ${barcodeLookupError ? `<p class="muted small" style="color:var(--danger);margin-top:0.5rem;">${esc(barcodeLookupError)}</p>` : ''}
+        ${barcodeNotFoundCode ? `
+          <p class="muted small" style="margin-top:0.5rem;">No match for barcode ${esc(barcodeNotFoundCode)} in Open Food Facts.</p>
+          <button class="btn" id="barcodeToManualBtn" style="margin-top:0.25rem;">Enter It Manually</button>
+        ` : ''}
+      </div>
+      ${barcodeResult ? barcodeResultCardHtml(barcodeResult) : ''}
+    `;
+    const startBtn = $('#startBarcodeBtn');
+    if (startBtn) startBtn.addEventListener('click', startBarcodeScan);
+    const stopBtn = $('#stopBarcodeBtn');
+    if (stopBtn) stopBtn.addEventListener('click', () => { stopBarcodeScan(); renderLogSubPanel(); });
+    const toManualBtn = $('#barcodeToManualBtn');
+    if (toManualBtn) toManualBtn.addEventListener('click', () => {
+      pendingBarcodeForManualEntry = barcodeNotFoundCode;
+      barcodeNotFoundCode = null;
+      logSubTab = 'manual';
+      renderLogTab();
+    });
+    if (barcodeResult) wireBarcodeResultCard(barcodeResult.barcode);
   } else if (logSubTab === 'common') {
     el.innerHTML = `
       <div class="card">
@@ -3819,6 +4019,7 @@ function renderLogSubPanel() {
     el.innerHTML = `
       <div class="card">
         <h3>Manual Entry</h3>
+        ${pendingBarcodeForManualEntry ? `<p class="muted small">Barcode ${esc(pendingBarcodeForManualEntry)} wasn't found — enter the details manually and it'll be saved with this entry.</p>` : ''}
         <div class="field"><label>Food name</label><input class="input" id="man_name"></div>
         <div class="row">
           <div class="field"><label>Calories</label><input class="input mono" id="man_cal" type="number"></div>
@@ -3838,7 +4039,10 @@ function renderLogSubPanel() {
       carbs_g: Number($('#man_carb').value) || 0,
       fat_g: Number($('#man_fat').value) || 0,
     });
-    $('#manLogBtn').addEventListener('click', () => logFood({ ...readManual(), source: 'manual' }));
+    $('#manLogBtn').addEventListener('click', () => {
+      logFood({ ...readManual(), source: 'manual', barcode: pendingBarcodeForManualEntry });
+      pendingBarcodeForManualEntry = null;
+    });
     $('#manFavBtn').addEventListener('click', () => saveFavorite(readManual()));
   } else if (logSubTab === 'favorites') {
     el.innerHTML = `
