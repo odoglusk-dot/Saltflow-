@@ -771,7 +771,14 @@ For the exercise library expansion + hypertrophy guidance (adds
 reseeds `exercises` with the full ~75-exercise library — safe, since
 nothing references `exercises.id` by foreign key): run
 **`supabase-schema-phase17-exercise-hypertrophy.sql`** against an existing
-live database; fresh installs get it from `reset-schema.sql`.
+live database; fresh installs get it from `reset-schema.sql`. If a long
+paste of that single ~580-line file into the Supabase SQL Editor produces
+a syntax error partway through the VALUES list (seen on mobile — the
+paste was silently truncating), run the five smaller files instead —
+**`supabase-schema-phase17-part1-of-5.sql`** through **`...-part5-of-5.sql`**,
+in order. They're a byte-for-byte split of the same statement (15
+exercises per INSERT, part 1 also carries the ALTER/TRUNCATE) and
+produce an identical result either way.
 
 For exercise tags and the muscle-map key mapping (adds `movement_type`,
 `lengthened_bias`, `avoid_flags`, `block_types`, `muscle_map_key`,
