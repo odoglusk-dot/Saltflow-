@@ -5685,12 +5685,32 @@ async function recordGlossaryView(exerciseName) {
 // a real iPhone it fell back to dumping every <option> inline as plain
 // visible text in the page instead of showing them as suggestions, which
 // is worse than not having autocomplete at all. Back to a hand-rolled
-// dropdown, but the <input> element itself is still created exactly once
-// and never touched again while the user types — only a separate sibling
-// div re-renders per keystroke. An even earlier version rebuilt the whole
-// wrap (input included) on every keystroke; destroying the focused node
-// like that has no way to carry focus to its replacement, so typing past
-// the first character went nowhere.
+// dropdown.
+//
+// This field is built exactly once and never rebuilt from scratch again:
+// not on every keystroke (an earlier version did that and destroyed the
+// focused node on every keypress, so typing past the first character went
+// nowhere), and not on every renderLiftLog() re-render either (a later
+// version rebuilt the <input> itself every time the surrounding Lifts tab
+// re-rendered for ANY reason). That second case turned out to be the
+// deeper bug: removing a focused element from the document — even
+// briefly, even to reinsert the exact same node a moment later — blurs it
+// synchronously, and on iOS Safari that silently drops any keyboard-open
+// request already in flight for it. Verified with a headless test that
+// forces an unrelated re-render mid-keystroke: without the guard in
+// renderLiftLog() below, focus was lost even though the DOM node itself
+// survived.
+//
+// So there are three layers now, each closing a different gap:
+//  1. renderLiftLog() skips its whole rebuild while #lift_exercise is
+//     focused, so an unrelated trigger (a PR banner, some other async
+//     callback) can never touch this subtree mid-interaction.
+//  2. This function never rebuilds the <input> once it exists — only
+//     syncs its .value, and only while it isn't the active element.
+//  3. Committing a dropdown selection deliberately blurs the input itself
+//     before re-rendering, rather than relying on the guard to notice —
+//     that's a controlled, user-initiated transition out of "editing",
+//     not a race.
 function autocompleteDropdownHtml(value, options) {
   const trimmed = value.trim();
   const filtered = value ? options.filter((o) => o.toLowerCase().includes(value.toLowerCase())) : options;
@@ -5703,47 +5723,68 @@ function autocompleteDropdownHtml(value, options) {
 }
 
 let liftAutocompleteOpen = false;
+// Read fresh by the persistent dropdown-draw closure below on every call —
+// never captured stale, since the exercise list can still be loading the
+// first time this field is built.
+let liftExerciseFieldOptions = [];
+
+function drawLiftAutocompleteDropdown(wrap) {
+  const input = $('#lift_exercise', wrap);
+  const dropdownEl = $('#liftAutocompleteDropdown', wrap);
+  dropdownEl.innerHTML = liftAutocompleteOpen ? autocompleteDropdownHtml(liftForm.exercise, liftExerciseFieldOptions) : '';
+  $$('[data-ac-select]', dropdownEl).forEach((item) => item.addEventListener('mousedown', (e) => {
+    e.preventDefault(); // stops the mousedown's own default focus-shift so this handler (not a stray blur) controls what happens next
+    const val = item.dataset.acSelect;
+    liftForm.exercise = val;
+    liftAutocompleteOpen = false;
+    liftForm.muscleGroup = exerciseDefFor(val)?.muscle_group || DEFAULT_MUSCLE_GROUP[val] || liftForm.muscleGroup || '';
+    liftForm.bodyRegion = exerciseDefFor(val)?.body_region || DEFAULT_BODY_REGION[val] || liftForm.bodyRegion || '';
+    prefillLiftFormFromLast(val);
+    // Deliberately blur before re-rendering — a selection is a completed
+    // action, and renderLiftLog() would otherwise skip the render it
+    // needs to run (to reveal the muscle-group/body-region selects) since
+    // its focus-guard would still see this input as active.
+    input.blur();
+    renderLiftsTab();
+  }));
+}
 
 function renderLiftExerciseField(panel, allExerciseOptions) {
   const wrap = $('#liftExerciseWrap', panel);
   if (!wrap) return;
+  liftExerciseFieldOptions = allExerciseOptions;
 
-  wrap.innerHTML = `
-    <label>Exercise</label>
-    <input class="input" id="lift_exercise" value="${esc(liftForm.exercise)}" placeholder="Search or type a new exercise…" autocomplete="off">
-    <div id="liftAutocompleteDropdown"></div>
-  `;
-  const input = $('#lift_exercise', wrap);
-  const dropdownEl = $('#liftAutocompleteDropdown', wrap);
+  let input = $('#lift_exercise', wrap);
+  if (!input) {
+    wrap.innerHTML = `
+      <label>Exercise</label>
+      <input class="input" id="lift_exercise" placeholder="Search or type a new exercise…" autocomplete="off">
+      <div id="liftAutocompleteDropdown"></div>
+    `;
+    input = $('#lift_exercise', wrap);
+    input.value = liftForm.exercise;
+    input.addEventListener('focus', () => { liftAutocompleteOpen = true; drawLiftAutocompleteDropdown(wrap); });
+    input.addEventListener('input', (e) => {
+      liftForm.exercise = e.target.value;
+      liftAutocompleteOpen = true;
+      drawLiftAutocompleteDropdown(wrap);
+    });
+    input.addEventListener('blur', () => {
+      // Delayed so a dropdown item's mousedown (which fires first) can
+      // still register a selection before the dropdown disappears. This
+      // is the natural end of the interaction, so a full re-render is
+      // safe here — renderLiftLog()'s focus-guard no longer applies once
+      // this fires, since focus has already left the field.
+      setTimeout(() => { liftAutocompleteOpen = false; renderLiftsTab(); }, 150);
+    });
+  } else if (document.activeElement !== input) {
+    // Only sync from external state changes (e.g. tapping a "Suggested for
+    // today" chip) — never while the user is actively typing here, or
+    // we'd be fighting their caret position on every keystroke.
+    input.value = liftForm.exercise;
+  }
 
-  const drawDropdown = () => {
-    dropdownEl.innerHTML = liftAutocompleteOpen ? autocompleteDropdownHtml(liftForm.exercise, allExerciseOptions) : '';
-    $$('[data-ac-select]', dropdownEl).forEach((item) => item.addEventListener('mousedown', (e) => {
-      e.preventDefault(); // keeps focus on the input instead of the item, avoiding the blur race entirely
-      const val = item.dataset.acSelect;
-      liftForm.exercise = val;
-      liftAutocompleteOpen = false;
-      liftForm.muscleGroup = exerciseDefFor(val)?.muscle_group || DEFAULT_MUSCLE_GROUP[val] || liftForm.muscleGroup || '';
-      liftForm.bodyRegion = exerciseDefFor(val)?.body_region || DEFAULT_BODY_REGION[val] || liftForm.bodyRegion || '';
-      prefillLiftFormFromLast(val);
-      renderLiftsTab();
-    }));
-  };
-
-  input.addEventListener('focus', () => { liftAutocompleteOpen = true; drawDropdown(); });
-  input.addEventListener('input', (e) => {
-    liftForm.exercise = e.target.value;
-    liftAutocompleteOpen = true;
-    drawDropdown();
-  });
-  input.addEventListener('blur', () => {
-    // delayed so a dropdown item's mousedown (which fires first) can
-    // still register a selection before the dropdown disappears
-    setTimeout(() => { liftAutocompleteOpen = false; renderLiftsTab(); }, 150);
-  });
-
-  drawDropdown();
-  if (liftAutocompleteOpen) input.focus();
+  drawLiftAutocompleteDropdown(wrap);
 }
 
 // ── End Workout flow + post-session AI analysis ─────────────────────
@@ -6083,6 +6124,16 @@ function endWorkoutButtonHtml() {
 }
 
 function renderLiftLog(panel) {
+  // Skip the whole rebuild while the exercise field is actively focused.
+  // This is what actually prevents an unrelated trigger from blurring the
+  // field mid-interaction (see the long comment above
+  // renderLiftExerciseField) — the field's own handlers never call
+  // renderLiftsTab() while typing, and a deliberate selection blurs the
+  // input itself first, so this only ever defers renders that have
+  // nothing to do with the field. A full render always follows once
+  // focus naturally leaves it (see the input's 'blur' handler).
+  if (document.activeElement && document.activeElement.id === 'lift_exercise') return;
+
   const lifts = state.lifts;
   const prs = computeLiftPRs(lifts);
   const exercises = Array.from(new Set(lifts.map((l) => l.exercise)));
@@ -6095,6 +6146,17 @@ function renderLiftLog(panel) {
     volume: todayLifts.reduce((sum, l) => sum + l.weight * totalReps(l), 0),
   };
   const groupsForFormDate = Array.from(new Set(lifts.filter((l) => l.date === liftForm.date && l.superset_group).map((l) => l.superset_group)));
+
+  // Preserve the live #liftExerciseWrap DOM node (input + dropdown) across
+  // this innerHTML rebuild instead of letting it get destroyed and
+  // recreated from scratch. renderLiftLog reruns for reasons that have
+  // nothing to do with the exercise field (a date change, a superset
+  // toggle, a PR banner appearing) — replacing the whole panel every time
+  // was destroying and rebuilding the <input> under the user's finger,
+  // which on iOS Safari silently drops any keyboard-open request already
+  // in flight for the node being removed. See renderLiftExerciseField()
+  // below for the other half of this fix.
+  const preservedExerciseWrap = $('#liftExerciseWrap', panel);
 
   panel.innerHTML = `
     ${prBanner ? `
@@ -6250,6 +6312,7 @@ function renderLiftLog(panel) {
     </div>` : ''}
   `;
 
+  if (preservedExerciseWrap) $('#liftExerciseWrap', panel)?.replaceWith(preservedExerciseWrap);
   renderLiftExerciseField(panel, allExerciseOptions);
   wireMuscleMapEvents(panel);
   wireSplitEvents(panel);
