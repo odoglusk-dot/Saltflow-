@@ -6691,7 +6691,7 @@ function showUndoToast(message, onUndo, ms = 6000) {
 async function endWorkoutSession() {
   const today = localDateStr();
   const { error } = await supabase.from('workout_sessions')
-    .upsert({ user_id: state.user.id, date: today, ended_at: new Date().toISOString() });
+    .upsert({ user_id: state.user.id, date: today, ended_at: new Date().toISOString() }, { onConflict: 'user_id,date' });
   if (error) { toast('Could not end workout: ' + error.message); return; }
   analysisError = null;
   await loadWorkoutSession();
@@ -6705,7 +6705,7 @@ async function endWorkoutSession() {
 async function reopenWorkoutSession() {
   const today = localDateStr();
   const { error } = await supabase.from('workout_sessions')
-    .upsert({ user_id: state.user.id, date: today, ended_at: null });
+    .upsert({ user_id: state.user.id, date: today, ended_at: null }, { onConflict: 'user_id,date' });
   if (error) { toast('Could not reopen: ' + error.message); return; }
   analysisError = null;
   staleSessionPromptDismissed = false;
@@ -6770,7 +6770,7 @@ async function generateSessionAnalysis() {
     const { error } = await supabase.from('workout_sessions').upsert({
       user_id: state.user.id, date: localDateStr(),
       analysis: result.analysis, analysis_generated_at: new Date().toISOString(),
-    });
+    }, { onConflict: 'user_id,date' });
     if (error) throw error;
     await loadWorkoutSession();
   } catch (err) {
