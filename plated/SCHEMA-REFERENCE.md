@@ -150,10 +150,48 @@ user_id     uuid
 logged_date date (indexed)
 weight_lb   numeric
 note        text (optional)
+source      text (default 'manual' | 'healthkit_shortcut' — a partial unique index on (user_id, logged_date) applies only to 'healthkit_shortcut' rows, so manual multi-entry per day is untouched)
 created_at  timestamptz
 ```
 **Frontend reads:** `logged_date, weight_lb, note` (via select(*), order by `logged_date desc`)  
-**Frontend writes:** `user_id, logged_date, weight_lb, note`
+**Frontend writes:** `user_id, logged_date, weight_lb, note` — `source` is only ever written by the health-sync webhook (service role), never the client directly.
+
+---
+
+### `health_sync_tokens` / `sleep_log` / `steps_log` — Apple Health sync (beta)
+Added in `supabase-schema-phase22-apple-health-sync.sql`, backing the iOS
+Shortcut → webhook Apple Health route (native HealthKit is unreachable
+from a website or home-screen web app, so this is the free/no-App-Store
+path; a Capacitor + HealthKit native wrapper is the possible later
+upgrade — see the guide entry for the tradeoffs).
+```sql
+-- health_sync_tokens (one row per user)
+id            uuid primary key
+user_id       uuid unique
+token_hash    text unique   -- SHA-256 hash only; no plaintext column, ever
+created_at    timestamptz
+last_used_at  timestamptz
+revoked_at    timestamptz
+
+-- sleep_log / steps_log (one row per user per day)
+id           uuid primary key
+user_id      uuid
+logged_date  date
+hours / steps numeric / integer
+source       text (default 'healthkit_shortcut')
+created_at   timestamptz
+unique (user_id, logged_date)  -- makes a Shortcut run twice for the same day idempotent
+```
+**Frontend reads:** `select own` RLS only, for the Settings card's "last
+synced" indicator — no client-side writes to any of these three tables.
+Token issuance/regeneration/revocation goes through
+`netlify/functions/health-sync-token.js` (an authenticated,
+client-callable function using the caller's normal Supabase session);
+actual health data is written only by `netlify/functions/health-sync.js`
+(the public webhook the Shortcut posts to, authenticated by the token
+hash — not a Supabase session — using the service-role key server-side).
+The raw token is shown to the user exactly once, at generation time; only
+its hash is ever persisted.
 
 ---
 
@@ -720,3 +758,12 @@ For barcode scanning (adds the `'barcode'` value to `food_logs.source`,
 plus `food_logs.sugar_g` and `food_logs.barcode`): run
 **`supabase-schema-phase21-barcode-scanning.sql`** against an existing
 live database; fresh installs get it from `reset-schema.sql`.
+
+For Apple Health sync (adds `health_sync_tokens`, `sleep_log`,
+`steps_log`, and `weight_log.source`): run
+**`supabase-schema-phase22-apple-health-sync.sql`** against an existing
+live database; fresh installs get it from `reset-schema.sql`. Also
+requires the two new Netlify functions
+(`health-sync-token.js`/`health-sync.js`) to be deployed — no new
+environment variables beyond the `SUPABASE_SERVICE_ROLE_KEY` this repo's
+other admin-style functions already need.

@@ -219,10 +219,17 @@ create table weight_log (
   logged_date date not null default current_date,
   weight_lb numeric not null,
   note text,
+  -- 'manual' (default, unrestricted — multiple weigh-ins/day stay fine) or
+  -- 'healthkit_shortcut'. See supabase-schema-phase22-apple-health-sync.sql
+  -- for the partial unique index that makes only the latter idempotent
+  -- per day.
+  source text not null default 'manual',
   created_at timestamptz not null default now()
 );
 
 create index weight_log_user_date_idx on weight_log (user_id, logged_date desc);
+create unique index weight_log_healthsync_unique
+  on weight_log (user_id, logged_date) where source = 'healthkit_shortcut';
 
 alter table weight_log enable row level security;
 
@@ -232,6 +239,47 @@ create policy "weight_log: insert own" on weight_log
   for insert with check (auth.uid() = user_id);
 create policy "weight_log: delete own" on weight_log
   for delete using (auth.uid() = user_id);
+
+-- ── health_sync_tokens / sleep_log / steps_log (Apple Health sync) ──────
+-- See supabase-schema-phase22-apple-health-sync.sql for the full
+-- security rationale (hash-only token storage, no client write path).
+create table health_sync_tokens (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade unique,
+  token_hash text not null unique,
+  created_at timestamptz not null default now(),
+  last_used_at timestamptz,
+  revoked_at timestamptz
+);
+alter table health_sync_tokens enable row level security;
+create policy "health_sync_tokens: select own" on health_sync_tokens
+  for select using (auth.uid() = user_id);
+
+create table sleep_log (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  logged_date date not null,
+  hours numeric not null,
+  source text not null default 'healthkit_shortcut',
+  created_at timestamptz not null default now(),
+  unique (user_id, logged_date)
+);
+alter table sleep_log enable row level security;
+create policy "sleep_log: select own" on sleep_log
+  for select using (auth.uid() = user_id);
+
+create table steps_log (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  logged_date date not null,
+  steps integer not null,
+  source text not null default 'healthkit_shortcut',
+  created_at timestamptz not null default now(),
+  unique (user_id, logged_date)
+);
+alter table steps_log enable row level security;
+create policy "steps_log: select own" on steps_log
+  for select using (auth.uid() = user_id);
 
 -- ── supplement_logs ─────────────────────────────────────────────────────
 -- Per-date supplement logging.

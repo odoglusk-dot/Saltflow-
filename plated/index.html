@@ -960,6 +960,7 @@ const state = {
   exercises: [], // reference data, same rows for every account — see loadExercises()
   achievements: [], // unlocked rows: {achievement_id, unlocked_at} — see loadAchievements()
   workoutSession: null, // today's row: {date, ended_at, analysis, analysis_generated_at} | null — see loadWorkoutSession()
+  healthSyncToken: null, // {created_at, last_used_at, revoked_at} | null — see loadHealthSyncStatus(). Never the raw token itself; that's only ever seen once, at generation time.
   activeTab: 'dashboard',
   aiRemaining: null,
   subscription: null,
@@ -2050,7 +2051,7 @@ async function enterApp(session) {
 // ══════════════════════════════════════════════════════════════════
 async function bootstrapApp() {
   await ensureProfileAndGoals(state.user);
-  await Promise.all([loadProfile(), loadGoals(), loadBodyStats(), loadFavorites(), loadHistory(), loadWeightLog(), loadSupplementLogs(), loadWaterLog(), loadLifts(), loadExerciseGoals(), loadPhotos(), loadTrainingSplit(), loadReferrals(), loadFriendships(), loadLeaderboard(), loadExercises(), loadAchievements(), loadWorkoutSession()]);
+  await Promise.all([loadProfile(), loadGoals(), loadBodyStats(), loadFavorites(), loadHistory(), loadWeightLog(), loadSupplementLogs(), loadWaterLog(), loadLifts(), loadExerciseGoals(), loadPhotos(), loadTrainingSplit(), loadReferrals(), loadFriendships(), loadLeaderboard(), loadExercises(), loadAchievements(), loadWorkoutSession(), loadHealthSyncStatus()]);
   renderAll();
 }
 
@@ -2228,6 +2229,12 @@ async function loadWorkoutSession() {
   const { data } = await supabase.from('workout_sessions').select('*')
     .eq('user_id', state.user.id).eq('date', localDateStr()).maybeSingle();
   state.workoutSession = data || null;
+}
+
+async function loadHealthSyncStatus() {
+  const { data } = await supabase.from('health_sync_tokens').select('created_at,last_used_at,revoked_at')
+    .eq('user_id', state.user.id).maybeSingle();
+  state.healthSyncToken = data || null;
 }
 
 async function loadReferrals() {
@@ -4665,6 +4672,8 @@ const USER_GUIDE_SECTIONS = [
         body: 'Manual food and lift logging, Quick Add, barcode scanning, your Dashboard, training splits, and the friends leaderboard are free, forever, with no time limit. AI-powered features — photo and text macro estimation (Snap a Photo, Describe It) and Ask AI — are $4.99/month after a 3-day free trial.' },
       { id: 'managing-account', title: 'Managing Your Account',
         body: 'Update your display name, turn off evening logging-reminder emails, or sign out, all from the Profile tab. Deleting your account from Profile permanently removes it and all logged data — you\'ll need to type DELETE to confirm, since this can\'t be undone.' },
+      { id: 'apple-health-sync', title: 'Apple Health Sync (Beta)',
+        body: 'Sync bodyweight, sleep, and steps from Apple Health via an iOS Shortcut, set up from Profile → Apple Health Sync — iPhone only, free. There\'s no native app yet, so this works through a Shortcut you build once (step-by-step instructions are in the setup screen) rather than direct HealthKit access; a full native app is a possible future upgrade. You can revoke access and generate a new sync token anytime from the same screen.' },
     ],
   },
 ];
@@ -4793,6 +4802,9 @@ const LEARNING_PATHS = [
   },
 ];
 let showLearningPaths = false;
+let showHealthSyncSetup = false;
+let healthSyncGeneratedToken = null; // the raw token, held in memory only between generation and leaving this screen — never persisted, never re-fetchable
+let healthSyncBusy = false;
 let openLearningPathId = null;
 let learningPathCardIndex = 0;
 
@@ -4873,10 +4885,100 @@ function renderLearningPaths(panel) {
   wireCitationEvents(panel, () => renderLearningPaths(panel));
 }
 
+// ── Apple Health Sync setup (beta) ───────────────────────────────────────
+// iOS Shortcut -> webhook route: HealthKit is unreachable from a website
+// or home-screen web app, so a Shortcut reads Apple Health locally and
+// posts to health-sync.js, authenticated by a per-user token rather than a
+// Supabase session (a Shortcut can't hold one). See
+// supabase-schema-phase22-apple-health-sync.sql for the full security
+// shape — only a hash of the token is ever stored, and it's shown here
+// exactly once, right after generation.
+function healthSyncEndpointUrl() {
+  return `${window.location.origin}/.netlify/functions/health-sync`;
+}
+
+function renderHealthSyncSetup(panel) {
+  const token = state.healthSyncToken;
+  const isActive = token && !token.revoked_at;
+  panel.innerHTML = `
+    <div class="card">
+      <button class="btn btn-sm btn-ghost" id="closeHealthSyncBtn">← Back</button>
+      <h3>Apple Health Sync <span class="badge">BETA</span></h3>
+      <p class="muted">Syncs bodyweight, sleep, and steps from Apple Health via an iOS Shortcut you build once — iPhone only. There's no native app yet, so this works through Shortcuts' own "Get Contents of URL" action rather than direct HealthKit access; a full native app with that access is a possible future upgrade.</p>
+    </div>
+
+    <div class="card">
+      <h3>1. Get your sync token</h3>
+      ${healthSyncGeneratedToken ? `
+        <p class="muted small" style="color:var(--danger);">Copy this now — you won't be able to see it again. Paste it into the Shortcut below.</p>
+        <div class="field"><input class="input mono" id="healthSyncTokenDisplay" readonly value="${esc(healthSyncGeneratedToken)}"></div>
+        <button class="btn btn-sm" id="copyHealthSyncTokenBtn">Copy Token</button>
+      ` : isActive ? `
+        <p class="muted">You have an active token. It's never shown again after creation, for security — generate a new one if you've lost it (this replaces the old one, so update your Shortcut too).</p>
+      ` : `
+        <p class="muted">Generate a token to authenticate your Shortcut. Krafft never sees your Apple Health data directly — the Shortcut reads it on your phone and sends it to your own private sync link.</p>
+      `}
+      <div class="row">
+        <button class="btn btn-primary" id="generateHealthSyncTokenBtn" ${healthSyncBusy ? 'disabled' : ''}>${healthSyncBusy ? 'Working…' : (isActive ? 'Regenerate Token' : 'Generate Token')}</button>
+        ${isActive ? `<button class="btn btn-ghost" id="revokeHealthSyncTokenBtn" style="color:var(--danger);" ${healthSyncBusy ? 'disabled' : ''}>Revoke Access</button>` : ''}
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>2. Build the Shortcut</h3>
+      <ol style="padding-left:1.2rem;font-size:0.88rem;line-height:1.7;">
+        <li>Open the <strong>Shortcuts</strong> app on your iPhone and create a new shortcut.</li>
+        <li>Add a <strong>"Get Health Sample"</strong> action for each metric you want to sync (Weight, Sleep Analysis, Steps) — one action per metric, for today.</li>
+        <li>Add a <strong>"Text"</strong> action and build a JSON body from those values, e.g.:
+          <br><code style="font-size:0.78rem;word-break:break-all;">{"token": "YOUR_TOKEN", "date": "[Current Date, yyyy-MM-dd]", "bodyweight_lb": [Weight], "sleep_hours": [Sleep Hours], "steps": [Steps]}</code>
+          <br>Only include the fields for metrics you're actually syncing that day — leave the rest out entirely.</li>
+        <li>Add <strong>"Get Contents of URL"</strong>: Method <strong>POST</strong>, Headers none needed, Request Body <strong>JSON</strong> from your Text action, URL:
+          <br><code style="font-size:0.78rem;word-break:break-all;">${esc(healthSyncEndpointUrl())}</code></li>
+        <li>Name it (e.g. "Sync to Krafft") and run it once to test.</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <h3>3. Automate it</h3>
+      <p class="muted">In Shortcuts, go to <strong>Automation → Create Personal Automation → Time of Day</strong>, pick a daily time, choose your sync shortcut, and turn off "Ask Before Running" so it runs silently.</p>
+    </div>
+  `;
+  $('#closeHealthSyncBtn').addEventListener('click', () => { showHealthSyncSetup = false; healthSyncGeneratedToken = null; renderProfile(); });
+  const copyBtn = $('#copyHealthSyncTokenBtn');
+  if (copyBtn) copyBtn.addEventListener('click', () => copyToClipboard(healthSyncGeneratedToken, 'Token copied.'));
+  $('#generateHealthSyncTokenBtn').addEventListener('click', async () => {
+    healthSyncBusy = true; renderHealthSyncSetup(panel);
+    try {
+      const result = await callFunction('health-sync-token', { action: 'generate' });
+      healthSyncGeneratedToken = result.token;
+      await loadHealthSyncStatus();
+    } catch (err) {
+      toast('Could not generate a token: ' + err.message);
+    } finally {
+      healthSyncBusy = false; renderHealthSyncSetup(panel);
+    }
+  });
+  const revokeBtn = $('#revokeHealthSyncTokenBtn');
+  if (revokeBtn) revokeBtn.addEventListener('click', async () => {
+    healthSyncBusy = true; renderHealthSyncSetup(panel);
+    try {
+      await callFunction('health-sync-token', { action: 'revoke' });
+      healthSyncGeneratedToken = null;
+      await loadHealthSyncStatus();
+      toast('Apple Health sync disconnected.');
+    } catch (err) {
+      toast('Could not revoke: ' + err.message);
+    } finally {
+      healthSyncBusy = false; renderHealthSyncSetup(panel);
+    }
+  });
+}
+
 function renderProfile() {
   const panel = $('#panel-profile');
   if (showLearningPaths) { renderLearningPaths(panel); return; }
   if (showUserGuide) { renderUserGuide(panel); return; }
+  if (showHealthSyncSetup) { renderHealthSyncSetup(panel); return; }
   const p = state.profile || {};
   const bs = state.bodyStats || {};
   panel.innerHTML = `
@@ -5030,6 +5132,14 @@ function renderProfile() {
     </div>
 
     <div class="card">
+      <h3>Apple Health Sync <span class="badge">BETA</span></h3>
+      ${state.healthSyncToken && !state.healthSyncToken.revoked_at ? `
+        <p class="muted">Connected. ${state.healthSyncToken.last_used_at ? `Last synced ${new Date(state.healthSyncToken.last_used_at).toLocaleString()}.` : 'No sync received yet — check your Shortcut once it\'s run.'}</p>
+      ` : `<p class="muted">Sync bodyweight, sleep, and steps from Apple Health via an iOS Shortcut — no app install needed. iPhone only.</p>`}
+      <button class="btn" id="openHealthSyncSetupBtn">${state.healthSyncToken && !state.healthSyncToken.revoked_at ? 'Manage Sync' : 'Set Up Apple Health Sync'}</button>
+    </div>
+
+    <div class="card">
       <h3>Support</h3>
       <p class="muted">Something broken, or just have a question?</p>
       <a class="btn" href="mailto:${SUPPORT_EMAIL}?subject=Krafft%20support">Contact Support</a>
@@ -5059,6 +5169,7 @@ function renderProfile() {
   $$('[data-achievement-share]', panel).forEach((btn) => btn.addEventListener('click', () => shareAchievement(btn.dataset.achievementShare)));
 
   $('#openGuideBtn').addEventListener('click', () => { showUserGuide = true; renderProfile(); });
+  $('#openHealthSyncSetupBtn').addEventListener('click', () => { showHealthSyncSetup = true; renderProfile(); });
 
   $('#goal_save').addEventListener('click', async () => {
     const goals = {
