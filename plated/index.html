@@ -451,6 +451,17 @@
   .history-day-body-inner { padding-top: 0.6rem; }
   .meal-thumb { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; flex: none; }
 
+  /* ── Generic collapsible section groups (reusable across tabs) ───── */
+  .chevron { display: inline-block; flex: none; color: var(--text-dim); transition: transform 0.25s ease; }
+  .chevron.expanded { transform: rotate(90deg); }
+  .section-toggle { margin-bottom: 1rem; }
+  .section-toggle-header { display: flex; align-items: center; gap: 0.6rem; width: 100%;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    padding: 0.9rem 1.1rem; cursor: pointer; text-align: left; font: inherit; color: inherit; }
+  .section-toggle-header strong { flex: 1; }
+  .section-toggle-body { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
+  .section-toggle-body-inner { padding-top: 0.85rem; }
+
   .sub-nav { display: flex; gap: 0.4rem; margin-bottom: 1rem; flex-wrap: wrap; }
   .sub-nav button { flex: none; }
 
@@ -926,6 +937,62 @@ function copyToClipboard(text, successMessage) {
   navigator.clipboard.writeText(text)
     .then(() => toast(successMessage))
     .catch(() => toast('Could not copy — select and copy manually.'));
+}
+
+// ── Generic collapsible section groups ──────────────────────────────
+// Wraps an arbitrary chunk of already-rendered HTML behind a card-style
+// header that expands/collapses. Generalized from the History tab's
+// per-day accordion (expandedHistoryDays / .history-day-* below) so it
+// can be reused wherever a tab wants to de-emphasize secondary content
+// by default. `expandedSet` is a Set of group keys owned by the caller
+// (module-level state, same pattern as expandedHistoryDays) — this
+// function only reads it to decide the initial expanded/collapsed
+// render; wireCollapsibleSections owns writing to it.
+function collapsibleSectionHtml(key, label, countLabel, bodyHtml, expandedSet) {
+  const isExpanded = expandedSet.has(key);
+  return `<div class="section-toggle">
+    <button class="section-toggle-header" data-section-toggle="${esc(key)}" aria-expanded="${isExpanded}">
+      <span class="chevron ${isExpanded ? 'expanded' : ''}">▸</span>
+      <strong>${esc(label)}</strong>
+      ${countLabel ? `<span class="muted small">${esc(countLabel)}</span>` : ''}
+    </button>
+    <div class="section-toggle-body" data-section-body="${esc(key)}">
+      <div class="section-toggle-body-inner">${bodyHtml}</div>
+    </div>
+  </div>`;
+}
+
+// Wires click-to-toggle for every collapsibleSectionHtml() instance under
+// `panel`, and syncs each body's initial max-height to expandedSet's
+// current state. Uses the same fixed-cap-on-render / scrollHeight-on-click
+// split as the History accordion below — a render can happen while the
+// owning tab isn't active (display:none makes scrollHeight read 0), but a
+// click can only happen while the tab is visible, so scrollHeight is safe
+// to measure there. Toggling flips styles on the existing nodes directly
+// rather than re-rendering the whole panel, so the max-height transition
+// can actually animate.
+function wireCollapsibleSections(panel, expandedSet) {
+  $$('[data-section-body]', panel).forEach((body) => {
+    if (expandedSet.has(body.dataset.sectionBody)) body.style.maxHeight = '10000px';
+  });
+  $$('[data-section-toggle]', panel).forEach((header) => {
+    header.addEventListener('click', () => {
+      const key = header.dataset.sectionToggle;
+      const body = panel.querySelector(`[data-section-body="${key}"]`);
+      const chevron = header.querySelector('.chevron');
+      if (expandedSet.has(key)) {
+        expandedSet.delete(key);
+        body.style.maxHeight = '0px';
+        chevron.classList.remove('expanded');
+        header.setAttribute('aria-expanded', 'false');
+      } else {
+        expandedSet.add(key);
+        body.style.maxHeight = body.scrollHeight + 'px';
+        chevron.classList.add('expanded');
+        header.setAttribute('aria-expanded', 'true');
+      }
+    });
+  });
 }
 
 // Covers the window between #app becoming visible and bootstrapApp()'s
@@ -4603,6 +4670,7 @@ function calorieRangeForGoal(calorieGoal, goalMode, bmr) {
 }
 
 let addFriendMessage = '';
+let profileGroupExpanded = new Set(); // 'personalize' | 'more' — both collapsed by default
 
 // ── In-app User Guide (Profile → Guide) ──────────────────────────────────
 // Static, pre-written reference content — same spirit as TIP_LIBRARY and
@@ -5008,6 +5076,7 @@ function renderProfile() {
       ${achievementsGridHtml()}
     </div>
 
+    ${collapsibleSectionHtml('personalize', 'Personalize', '', `
     <div class="card">
       <h3>Goal Calculator</h3>
       <p class="muted">Mifflin-St Jeor based estimate. Pick a target weight and date — the pace that implies is checked
@@ -5048,6 +5117,18 @@ function renderProfile() {
       <div id="calc_result" style="margin-top:1rem;"></div>
     </div>
 
+    <div class="card">
+      <h3>Email Reminders</h3>
+      <div class="consent-line" style="margin-top:0;">
+        <input type="checkbox" id="email_reminders_check" ${p.email_reminders_opt_out ? '' : 'checked'}>
+        <label style="margin:0;color:var(--text-dim);font-weight:400;" for="email_reminders_check">
+          Email me a reminder in the evening if I haven't logged any food that day.
+        </label>
+      </div>
+    </div>
+    `, profileGroupExpanded)}
+
+    ${collapsibleSectionHtml('more', 'More', state.incomingFriendRequests.length ? `${state.incomingFriendRequests.length} friend request${state.incomingFriendRequests.length === 1 ? '' : 's'}` : '', `
     <div class="card">
       <h3>Subscription</h3>
       <span class="badge ${hasAccess(state.subscription) ? 'on' : ''}">${hasAccess(state.subscription) ? '⭐ Paid — AI unlocked' : '🔓 Free tier'}</span>
@@ -5118,16 +5199,6 @@ function renderProfile() {
     </div>
 
     <div class="card">
-      <h3>Email Reminders</h3>
-      <div class="consent-line" style="margin-top:0;">
-        <input type="checkbox" id="email_reminders_check" ${p.email_reminders_opt_out ? '' : 'checked'}>
-        <label style="margin:0;color:var(--text-dim);font-weight:400;" for="email_reminders_check">
-          Email me a reminder in the evening if I haven't logged any food that day.
-        </label>
-      </div>
-    </div>
-
-    <div class="card">
       <h3>Guide</h3>
       <p class="muted">A browsable how-to for every feature — logging, training splits, PRs, AI analysis, tiers, and more.</p>
       <button class="btn" id="openGuideBtn">Browse the Guide</button>
@@ -5146,6 +5217,7 @@ function renderProfile() {
       <p class="muted">Something broken, or just have a question?</p>
       <a class="btn" href="mailto:${SUPPORT_EMAIL}?subject=Krafft%20support">Contact Support</a>
     </div>
+    `, profileGroupExpanded)}
 
     <div class="card">
       <h3>Account</h3>
@@ -5172,6 +5244,7 @@ function renderProfile() {
 
   $('#openGuideBtn').addEventListener('click', () => { showUserGuide = true; renderProfile(); });
   $('#openHealthSyncSetupBtn').addEventListener('click', () => { showHealthSyncSetup = true; renderProfile(); });
+  wireCollapsibleSections(panel, profileGroupExpanded);
 
   $('#goal_save').addEventListener('click', async () => {
     const goals = {
@@ -6019,6 +6092,7 @@ let cueCardBanner = null; // { trigger: 'first'|'gap', def: exercises row } — 
 let showExerciseGlossary = false;
 let glossaryFilter = { search: '', muscleGroup: '' };
 let glossaryExpandedName = null;
+let liftsGroupExpanded = new Set(); // 'training-plan' | 'your-progress' — both collapsed by default
 
 let goalCardEditing = false;
 let goalCardError = '';
@@ -7129,64 +7203,70 @@ function renderLiftLog(panel) {
     </div>` : ''}
     ${suggestedExercisesHtml(exercises)}
 
-    ${todaysFocusHtml()}
-    ${blockBuilderSummaryCardHtml()}
-    ${weeklyHardSetsHtml(lifts)}
-    ${muscleMapHtml(lifts)}
+    ${collapsibleSectionHtml('training-plan', 'Training Plan', '', `
+      ${todaysFocusHtml()}
+      ${blockBuilderSummaryCardHtml()}
+    `, liftsGroupExpanded)}
 
-    <div class="stat-grid-2">
-      <div class="stat-card-sm">
-        <h3>Bodyweight</h3>
-        <div class="stat-num">${latestBodyweightEntry(state.weightLog) ? round(latestBodyweightEntry(state.weightLog).weight_lb, 1) : '—'} <span class="muted small">lb</span></div>
-        <div class="muted small">${latestBodyweightEntry(state.weightLog) ? latestBodyweightEntry(state.weightLog).logged_date : 'no entries yet'}</div>
-      </div>
-      <div class="stat-card-sm">
-        <h3>Lifts Logged</h3>
-        <div class="stat-num">${lifts.length}</div>
-        <div class="muted small">${Object.keys(prs).length} exercises tracked</div>
-      </div>
-      <div class="stat-card-sm">
-        <h3>Career Volume</h3>
-        <div class="stat-num">${Math.round(lifts.reduce((sum, l) => sum + l.weight * totalReps(l), 0)).toLocaleString()} <span class="muted small">lb</span></div>
-        ${volumeFunFact(lifts.reduce((sum, l) => sum + l.weight * totalReps(l), 0)) ? `<div class="muted small" style="color:var(--accent);">${esc(volumeFunFact(lifts.reduce((sum, l) => sum + l.weight * totalReps(l), 0)))}</div>` : ''}
-      </div>
-    </div>
+    ${collapsibleSectionHtml('your-progress', 'Your Progress', '', `
+      ${weeklyHardSetsHtml(lifts)}
+      ${muscleMapHtml(lifts)}
 
-    ${(() => {
-      const prList = Object.values(prs).sort((a, b) => b.date.localeCompare(a.date));
-      if (!prList.length) return '';
-      return `
-    <div>
-      <h3 style="margin:0 0 0.5rem;">Personal records</h3>
-      <div style="display:flex;gap:0.75rem;overflow-x:auto;padding-bottom:0.4rem;">
-        ${prList.map((pr) => {
-          const history = lifts.filter((l) => l.exercise === pr.exercise).sort((a, b) => a.date.localeCompare(b.date));
-          return `
-          <div class="card" style="min-width:150px;flex-shrink:0;margin-bottom:0;cursor:pointer;" data-pr-open="${esc(pr.exercise)}">
-            <div style="font-size:0.85rem;font-weight:600;color:var(--accent);margin-bottom:0.25rem;">${esc(pr.exercise)}</div>
-            <div class="stat-num" style="font-size:1.2rem;">${pr.weight} <span class="muted small">lb</span></div>
-            <div class="muted small">${pr.date}</div>
-            ${history.length > 1 ? `<div style="margin-top:0.35rem;">${miniLineSvg(history.map((l) => l.weight), 130, 32)}</div>` : ''}
-          </div>`;
-        }).join('')}
+      <div class="stat-grid-2">
+        <div class="stat-card-sm">
+          <h3>Bodyweight</h3>
+          <div class="stat-num">${latestBodyweightEntry(state.weightLog) ? round(latestBodyweightEntry(state.weightLog).weight_lb, 1) : '—'} <span class="muted small">lb</span></div>
+          <div class="muted small">${latestBodyweightEntry(state.weightLog) ? latestBodyweightEntry(state.weightLog).logged_date : 'no entries yet'}</div>
+        </div>
+        <div class="stat-card-sm">
+          <h3>Lifts Logged</h3>
+          <div class="stat-num">${lifts.length}</div>
+          <div class="muted small">${Object.keys(prs).length} exercises tracked</div>
+        </div>
+        <div class="stat-card-sm">
+          <h3>Career Volume</h3>
+          <div class="stat-num">${Math.round(lifts.reduce((sum, l) => sum + l.weight * totalReps(l), 0)).toLocaleString()} <span class="muted small">lb</span></div>
+          ${volumeFunFact(lifts.reduce((sum, l) => sum + l.weight * totalReps(l), 0)) ? `<div class="muted small" style="color:var(--accent);">${esc(volumeFunFact(lifts.reduce((sum, l) => sum + l.weight * totalReps(l), 0)))}</div>` : ''}
+        </div>
       </div>
-    </div>`;
-    })()}
-    ${(() => {
-      const recent = [...lifts].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
-      if (!recent.length) return '';
-      return `
-    <div>
-      <h3 style="margin:0 0 0.5rem;">Recent sessions</h3>
-      <div class="card" style="padding:0;">
-        ${recent.map((l) => `
-          <div class="log-row">
-            <span>${esc(l.exercise)}</span>
-            <span class="mono muted">${l.weight}lb · ${repsDisplay(l)} · ${l.date}</span>
-          </div>`).join('')}
-      </div>
-    </div>`;
-    })()}
+
+      ${(() => {
+        const prList = Object.values(prs).sort((a, b) => b.date.localeCompare(a.date));
+        if (!prList.length) return '';
+        return `
+      <div>
+        <h3 style="margin:0 0 0.5rem;">Personal records</h3>
+        <div style="display:flex;gap:0.75rem;overflow-x:auto;padding-bottom:0.4rem;">
+          ${prList.map((pr) => {
+            const history = lifts.filter((l) => l.exercise === pr.exercise).sort((a, b) => a.date.localeCompare(b.date));
+            return `
+            <div class="card" style="min-width:150px;flex-shrink:0;margin-bottom:0;cursor:pointer;" data-pr-open="${esc(pr.exercise)}">
+              <div style="font-size:0.85rem;font-weight:600;color:var(--accent);margin-bottom:0.25rem;">${esc(pr.exercise)}</div>
+              <div class="stat-num" style="font-size:1.2rem;">${pr.weight} <span class="muted small">lb</span></div>
+              <div class="muted small">${pr.date}</div>
+              ${history.length > 1 ? `<div style="margin-top:0.35rem;">${miniLineSvg(history.map((l) => l.weight), 130, 32)}</div>` : ''}
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+      })()}
+      ${(() => {
+        const recent = [...lifts].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
+        if (!recent.length) return '';
+        return `
+      <div>
+        <h3 style="margin:0 0 0.5rem;">Recent sessions</h3>
+        <div class="card" style="padding:0;">
+          ${recent.map((l) => `
+            <div class="log-row">
+              <span>${esc(l.exercise)}</span>
+              <span class="mono muted">${l.weight}lb · ${repsDisplay(l)} · ${l.date}</span>
+            </div>`).join('')}
+        </div>
+      </div>`;
+      })()}
+    `, liftsGroupExpanded)}
+
     ${lifts.length === 0 ? `
     <div class="card">
       <p class="muted" style="text-align:center;">No lifts logged yet — log your first one above to start tracking PRs, volume, and your muscle map.</p>
@@ -7199,6 +7279,7 @@ function renderLiftLog(panel) {
   wireMuscleMapEvents(panel);
   wireSplitEvents(panel);
   wireBlockBuilderSummaryEvents(panel);
+  wireCollapsibleSections(panel, liftsGroupExpanded);
   $$('[data-pr-open]', panel).forEach((card) => card.addEventListener('click', () => {
     liftsSelectedExercise = card.dataset.prOpen;
     liftHistoryEditingId = null;
