@@ -1915,7 +1915,7 @@ function renderOnboarding() {
       const r = calcFromObInputs();
       const preview = $('#ob_calc_preview');
       preview.innerHTML = r
-        ? `<span class="badge on">${r.targetCalories} kcal</span> <span class="badge">P ${r.proteinG}g</span> <span class="badge">C ${r.carbsG}g</span> <span class="badge">F ${r.fatG}g</span>`
+        ? `<span class="badge on">${r.targetCalories} kcal</span> <span class="badge">P ${r.proteinG}g</span> <span class="badge">C ${r.carbsG}g</span> <span class="badge">F ${r.fatG}g</span>${goalExplainerHtml(r.activity, r.goalMode)}`
         : `Fill in age, height, and weight to see your calculated targets.`;
     }
     updateObPreview();
@@ -3201,6 +3201,38 @@ function todaysFocusHeroHtml() {
   </div>`;
 }
 
+// ── Protein by meal ───────────────────────────────────────────────────────
+// food_logs has no meal-type column (breakfast/lunch/dinner) — each row is
+// its own timestamped entry, so "per meal" here means each logged entry
+// across the day in chronological order, not a fixed set of meal slots.
+let proteinByMealInfoExpanded = false;
+function proteinByMealHtml(todayLogs, proteinGoal) {
+  if (!todayLogs.length) return '';
+  const sorted = [...todayLogs].sort((a, b) => new Date(a.logged_at) - new Date(b.logged_at));
+  let running = 0;
+  const rows = sorted.map((l) => {
+    running += l.protein_g;
+    return { time: new Date(l.logged_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), name: l.food_name, protein: l.protein_g, running };
+  });
+  return `<div class="card">
+    <div class="row" style="justify-content:space-between;align-items:center;">
+      <h3 style="margin:0;">Protein by Meal</h3>
+      <button class="btn btn-sm btn-ghost" id="proteinByMealInfoBtn" style="flex:none;">${proteinByMealInfoExpanded ? 'Hide' : 'Why this matters'}</button>
+    </div>
+    ${proteinByMealInfoExpanded ? `<p class="muted small" style="background:var(--surface-2);border-radius:8px;padding:0.6rem 0.75rem;margin-top:0.5rem;">Some research suggests spreading protein intake across multiple meals — rather than getting most of it in one sitting — may help your body use it more effectively for muscle repair and growth over the day. We don't have a specific verified citation for this yet, so treat it as a general habit worth trying, not a strict rule.</p>` : ''}
+    <div style="margin-top:0.5rem;">
+      ${rows.map((r) => `<div class="row" style="justify-content:space-between;font-size:0.85rem;padding:0.3rem 0;border-bottom:1px solid var(--border);">
+        <span class="muted">${esc(r.time)} · ${esc(r.name)}</span>
+        <span class="mono">${round(r.protein)}g</span>
+      </div>`).join('')}
+    </div>
+    <div class="row" style="justify-content:space-between;margin-top:0.5rem;font-weight:600;">
+      <span>Total today</span>
+      <span class="mono" style="color:var(--accent);">${round(running)}g${proteinGoal ? ` <span class="muted small" style="font-weight:400;">/ ${round(proteinGoal)}g goal</span>` : ''}</span>
+    </div>
+  </div>`;
+}
+
 function renderDashboard() {
   const totals = sumMacros(state.todayLogs);
   const { current, best } = computeStreaks(state.historyLogs, state.goals.protein_g);
@@ -3316,6 +3348,7 @@ function renderDashboard() {
             <button class="btn btn-sm btn-ghost" data-delete-log="${l.id}">✕</button>
           </div>`).join('')}
     </div>
+    ${proteinByMealHtml(state.todayLogs, state.goals.protein_g)}
 
     <div class="card">
       <h3>Quick Add</h3>
@@ -3375,6 +3408,8 @@ function renderDashboard() {
   });
 
   $$('[data-delete-log]', panel).forEach((btn) => btn.addEventListener('click', () => deleteLog(btn.dataset.deleteLog)));
+  const proteinByMealInfoBtn = $('#proteinByMealInfoBtn', panel);
+  if (proteinByMealInfoBtn) proteinByMealInfoBtn.addEventListener('click', () => { proteinByMealInfoExpanded = !proteinByMealInfoExpanded; renderDashboard(); });
   $$('[data-water]', panel).forEach((btn) => btn.addEventListener('click', () => logWater(Number(btn.dataset.water))));
   const logCustomWater = () => {
     const input = $('#water_custom_oz');
@@ -4214,6 +4249,7 @@ async function handleAsk() {
 // PROFILE TAB
 // ══════════════════════════════════════════════════════════════════
 const ACTIVITY_MULTIPLIERS = { sedentary: 1.2, light: 1.375, moderate: 1.55, active: 1.725, very_active: 1.9 };
+const ACTIVITY_LABELS = { sedentary: 'Sedentary', light: 'Light (1-3 days/wk)', moderate: 'Moderate (3-5 days/wk)', active: 'Active (6-7 days/wk)', very_active: 'Very Active (2x/day training)' };
 
 // Macro split shifts by goal: higher protein/lb when cutting (protects
 // muscle in a deficit), slightly lower when in a surplus (extra calories
@@ -4273,6 +4309,23 @@ function computeCaloriesAndMacros({ bmr, tdee, weightLb, weeklyRateLb, goalMode 
   const remaining = Math.max(targetCalories - proteinG * 4 - fatG * 9, 0);
   const carbsG = Math.round(remaining / 4);
   return { targetCalories, proteinG, fatG, carbsG, safetyFloor, adjusted };
+}
+
+// Shared "here's how we got your numbers" explainer, shown wherever goals
+// are auto-calculated rather than typed in by hand (onboarding's calc step
+// and the Profile → Goal Calculator) — names the formula, the activity
+// multiplier actually used, and the protein basis, rather than just
+// showing the resulting numbers with no explanation of where they came
+// from.
+function goalExplainerHtml(activity, goalMode) {
+  const multiplier = ACTIVITY_MULTIPLIERS[activity];
+  const proteinPerLb = MACRO_SPLIT_BY_GOAL[goalMode].proteinPerLb;
+  const proteinReason = goalMode === 'lose'
+    ? 'the higher end, to help protect muscle in a calorie deficit'
+    : goalMode === 'gain'
+    ? 'the lower end, since surplus calories already help preserve muscle'
+    : 'a middle-ground maintenance level';
+  return `<p class="muted small" style="margin-top:0.5rem;">Here's how we got your numbers: resting calorie burn (BMR) comes from the Mifflin-St Jeor formula using your age, sex, height, and weight; that's multiplied by ${multiplier}× for your "${ACTIVITY_LABELS[activity]}" activity level to estimate total daily burn; and your protein target is set at ${proteinPerLb}g per pound of bodyweight — ${proteinReason}.</p>`;
 }
 
 // Stamps goal_mode_changed_at only when goal_mode is actually changing from
@@ -4868,6 +4921,7 @@ function renderProfile() {
       </div>
       <p class="muted" style="margin-top:0.5rem;">BMR ${Math.round(bmr)} kcal · TDEE ${Math.round(tdee)} kcal · ${targetDateStr ? `Goal: ${goalModeLabel} (${Math.abs(weeklyRateLb).toFixed(2)} lb/week, ${Math.abs(weeklyRatePercent).toFixed(2)}% bodyweight/week)` : 'No target date set — maintenance-calorie estimate.'}${adjusted < safetyFloor ? ' · adjusted up to the safety floor' : ''}</p>
       <p class="muted">Healthy range: ${rangeLabel}. Your goal is what you're aiming for — the shaded range is a healthy zone around it, not a strict rule.</p>
+      ${goalExplainerHtml(activity, goalMode)}
       <button class="btn btn-primary" id="calc_apply" style="margin-top:0.5rem;">Apply to My Goals</button>
     `;
 
