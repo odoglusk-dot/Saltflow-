@@ -6407,29 +6407,11 @@ function wireSessionAnalysisEvents(panel) {
 }
 
 function renderSessionSummary(panel) {
-  const todayLifts = todaysLifts();
-  const summary = {
-    exerciseCount: new Set(todayLifts.map((l) => l.exercise)).size,
-    sets: todayLifts.reduce((sum, l) => sum + (l.reps_per_set?.length || l.sets || 0), 0),
-    volume: todayLifts.reduce((sum, l) => sum + l.weight * totalReps(l), 0),
-  };
-  const byExercise = {};
-  for (const l of todayLifts) (byExercise[l.exercise] = byExercise[l.exercise] || []).push(l);
-
   panel.innerHTML = `
-    <div class="card">
-      <h3>Workout Complete</h3>
-      <div class="today-summary-row">
-        <div><div class="stat-num">${summary.exerciseCount}</div><div class="muted small">exercise${summary.exerciseCount === 1 ? '' : 's'}</div></div>
-        <div><div class="stat-num">${summary.sets}</div><div class="muted small">set${summary.sets === 1 ? '' : 's'}</div></div>
-        <div><div class="stat-num">${Math.round(summary.volume).toLocaleString()}</div><div class="muted small">volume</div></div>
-      </div>
-      <div class="muted small" style="margin-top:0.5rem;">${Object.entries(byExercise).map(([ex, sets]) => `${esc(ex)} (${sets.length}x)`).join(' · ')}</div>
-      <button class="btn" id="reopenSessionBtn" style="margin-top:0.75rem;">Reopen Session</button>
-    </div>
+    ${todaysLiftPanelHtml()}
     ${sessionAnalysisHtml()}
   `;
-  $('#reopenSessionBtn').addEventListener('click', reopenWorkoutSession);
+  wireTodaysLiftEditEvents(panel);
   wireSessionAnalysisEvents(panel);
 }
 
@@ -6529,6 +6511,154 @@ function endWorkoutButtonHtml() {
   return `<button class="btn btn-primary btn-block" id="endWorkoutBtn" style="margin-top:0.75rem;">End Workout</button>`;
 }
 
+// ── Today's Lift panel ──────────────────────────────────────────────────
+// Shown at the top of the Lift page whether the session is still active
+// (renderLiftLog) or already ended (renderSessionSummary) — same function
+// either way, so the two views can't drift. Reuses liftHistoryRowHtml()
+// (the per-set edit/delete UI already built for the per-exercise detail
+// view) rather than a second implementation; wireTodaysLiftEditEvents()
+// below is a separate, simpler wiring function rather than reusing
+// wireLiftDetailEvents(), since that one also handles per-exercise goal
+// editing this panel has no use for.
+function todaysLiftPanelHtml() {
+  const todayLiftsList = todaysLifts();
+  const ended = isSessionEndedToday();
+  if (!todayLiftsList.length) {
+    return `<div class="card">
+      <h3>Today's Lift</h3>
+      <p class="muted" style="text-align:center;">Nothing logged yet today — log your first lift below to get started.</p>
+    </div>`;
+  }
+
+  const byExercise = {};
+  todayLiftsList.forEach((l) => (byExercise[l.exercise] = byExercise[l.exercise] || []).push(l));
+  const today = localDateStr();
+  const priorPRs = computeLiftPRs(state.lifts.filter((l) => l.date < today));
+  const currentPRs = computeLiftPRs(state.lifts);
+
+  const workingSets = todayLiftsList.reduce((sum, l) => sum + workingSetCount(l), 0);
+  const totalVolume = todayLiftsList.reduce((sum, l) => sum + l.weight * totalReps(l), 0);
+  const exerciseCount = Object.keys(byExercise).length;
+
+  const timestamps = todayLiftsList.map((l) => (l.created_at ? new Date(l.created_at).getTime() : null)).filter(Boolean);
+  let elapsedLabel = null;
+  if (timestamps.length) {
+    const start = Math.min(...timestamps);
+    const end = ended && state.workoutSession?.ended_at ? new Date(state.workoutSession.ended_at).getTime() : Date.now();
+    const mins = Math.max(0, Math.round((end - start) / 60000));
+    elapsedLabel = mins < 60 ? `${mins} min` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
+  }
+
+  return `<div class="card">
+    <div class="row" style="justify-content:space-between;align-items:center;">
+      <h3 style="margin:0;">Today's Lift</h3>
+      ${ended ? `<span class="badge on">Complete</span>` : ''}
+    </div>
+    <div class="today-summary-row" style="margin-top:0.5rem;">
+      <div><div class="stat-num">${exerciseCount}</div><div class="muted small">exercise${exerciseCount === 1 ? '' : 's'}</div></div>
+      <div><div class="stat-num">${workingSets}</div><div class="muted small">working set${workingSets === 1 ? '' : 's'}</div></div>
+      <div><div class="stat-num">${Math.round(totalVolume).toLocaleString()}</div><div class="muted small">volume</div></div>
+      ${elapsedLabel ? `<div><div class="stat-num">${elapsedLabel}</div><div class="muted small">elapsed</div></div>` : ''}
+    </div>
+    ${Object.entries(byExercise).map(([exercise, sets]) => {
+      const volume = sets.reduce((sum, l) => sum + l.weight * totalReps(l), 0);
+      const bestE1RMToday = Math.max(...sets.map((l) => e1RM(l.weight, l.reps)));
+      // "New PR today" — the current all-time best for this exercise was
+      // set today (by weight) and either didn't exist before today or is
+      // higher than whatever it was before today.
+      const cur = currentPRs[exercise];
+      const isPR = !!cur && sets.some((l) => l.weight === cur.weight) && (!priorPRs[exercise] || cur.weight > priorPRs[exercise].weight);
+      return `<div style="margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid var(--border);">
+        <div class="row" style="justify-content:space-between;align-items:baseline;flex-wrap:wrap;">
+          <strong>${esc(exercise)}${isPR ? ' 🏆 PR' : ''}</strong>
+          <span class="muted small">${Math.round(volume).toLocaleString()} lb volume · e1RM ~${bestE1RMToday} lb</span>
+        </div>
+        ${sets.map((l, i) => liftHistoryRowHtml(l, i === sets.length - 1)).join('')}
+      </div>`;
+    }).join('')}
+    ${ended ? `<button class="btn btn-block" id="reopenSessionBtn" style="margin-top:0.75rem;">Reopen Session</button>` : endWorkoutButtonHtml()}
+  </div>`;
+}
+
+// Generic edit/save/delete wiring for liftHistoryRowHtml() rows, searching
+// state.lifts directly rather than a single exercise's scoped history —
+// Today's Lift can show rows from several exercises logged the same day.
+// Deliberately separate from wireLiftDetailEvents() (which also wires
+// per-exercise goal editing this panel doesn't need) to avoid touching
+// that existing, working code path.
+function wireTodaysLiftEditEvents(panel) {
+  $$('[data-lift-edit]', panel).forEach((btn) => btn.addEventListener('click', () => {
+    const lift = state.lifts.find((l) => l.id === btn.dataset.liftEdit);
+    if (!lift) return;
+    const repsPerSet = lift.reps_per_set && lift.reps_per_set.length ? lift.reps_per_set : [lift.reps];
+    liftHistoryEditingId = lift.id;
+    liftHistoryEditForm = { weight: String(lift.weight), date: lift.date, repsPerSet: repsPerSet.map(String) };
+    liftHistoryError = '';
+    liftHistoryConfirmDeleteId = null;
+    renderLiftsTab();
+  }));
+
+  const cancelBtn = $('#lhe_cancel', panel);
+  if (cancelBtn) cancelBtn.addEventListener('click', () => { liftHistoryEditingId = null; renderLiftsTab(); });
+  const weightInput = $('#lhe_weight', panel);
+  if (weightInput) weightInput.addEventListener('input', (e) => { liftHistoryEditForm.weight = e.target.value; });
+  const dateInput = $('#lhe_date', panel);
+  if (dateInput) dateInput.addEventListener('change', (e) => { liftHistoryEditForm.date = e.target.value; });
+  const setsInput = $('#lhe_sets', panel);
+  if (setsInput) setsInput.addEventListener('change', (e) => {
+    const count = Math.max(1, Math.min(20, Number(e.target.value) || 1));
+    const arr = liftHistoryEditForm.repsPerSet;
+    const fillVal = arr.length ? arr[arr.length - 1] : '5';
+    while (arr.length < count) arr.push(fillVal);
+    arr.length = count;
+    renderLiftsTab();
+  });
+  $$('[data-lhe-rep-idx]', panel).forEach((inp) => inp.addEventListener('input', (e) => {
+    liftHistoryEditForm.repsPerSet[Number(e.target.dataset.lheRepIdx)] = e.target.value;
+  }));
+
+  const saveBtn = $('#lhe_save', panel);
+  if (saveBtn) saveBtn.addEventListener('click', async () => {
+    const repsPerSet = liftHistoryEditForm.repsPerSet.map((r) => Number(r) || 0);
+    if (!liftHistoryEditForm.weight || repsPerSet.length === 0) return;
+    const reps = Math.round(avgReps(repsPerSet) * 10) / 10;
+    liftHistorySaving = true;
+    liftHistoryError = '';
+    renderLiftsTab();
+    const { error } = await supabase.from('lifts').update({
+      weight: Number(liftHistoryEditForm.weight), sets: repsPerSet.length,
+      reps_per_set: repsPerSet, reps, date: liftHistoryEditForm.date,
+    }).eq('id', liftHistoryEditingId);
+    liftHistorySaving = false;
+    if (error) { liftHistoryError = error.message || 'Failed to save.'; renderLiftsTab(); return; }
+    liftHistoryEditingId = null;
+    await loadLifts();
+    renderAll();
+  });
+
+  const deleteBtn = $('#lhe_delete', panel);
+  if (deleteBtn) deleteBtn.addEventListener('click', () => { liftHistoryConfirmDeleteId = liftHistoryEditingId; renderLiftsTab(); });
+  const cancelDeleteBtn = $('#lhe_cancelDelete', panel);
+  if (cancelDeleteBtn) cancelDeleteBtn.addEventListener('click', () => { liftHistoryConfirmDeleteId = null; renderLiftsTab(); });
+  const confirmDeleteBtn = $('#lhe_confirmDelete', panel);
+  if (confirmDeleteBtn) confirmDeleteBtn.addEventListener('click', async () => {
+    liftHistoryDeleting = true;
+    renderLiftsTab();
+    const { error } = await supabase.from('lifts').delete().eq('id', liftHistoryEditingId);
+    liftHistoryDeleting = false;
+    if (error) { liftHistoryError = error.message || 'Failed to delete.'; liftHistoryConfirmDeleteId = null; renderLiftsTab(); return; }
+    liftHistoryEditingId = null;
+    liftHistoryConfirmDeleteId = null;
+    await loadLifts();
+    renderAll();
+  });
+
+  const reopenBtn = $('#reopenSessionBtn', panel);
+  if (reopenBtn) reopenBtn.addEventListener('click', reopenWorkoutSession);
+  const endBtn = $('#endWorkoutBtn', panel);
+  if (endBtn) endBtn.addEventListener('click', endWorkoutSession);
+}
+
 function renderLiftLog(panel) {
   // Skip the whole rebuild while the exercise field is actively focused.
   // This is what actually prevents an unrelated trigger from blurring the
@@ -6544,13 +6674,6 @@ function renderLiftLog(panel) {
   const prs = computeLiftPRs(lifts);
   const exercises = Array.from(new Set(lifts.map((l) => l.exercise)));
   const allExerciseOptions = Array.from(new Set([...state.exercises.map((e) => e.name), ...COMMON_LIFTS, ...exercises]));
-  const today = localDateStr();
-  const todayLifts = lifts.filter((l) => l.date === today);
-  const todaySummary = {
-    exerciseCount: new Set(todayLifts.map((l) => l.exercise)).size,
-    sets: todayLifts.reduce((sum, l) => sum + (l.reps_per_set?.length || l.sets || 0), 0),
-    volume: todayLifts.reduce((sum, l) => sum + l.weight * totalReps(l), 0),
-  };
   const groupsForFormDate = Array.from(new Set(lifts.filter((l) => l.date === liftForm.date && l.superset_group).map((l) => l.superset_group)));
 
   // Preserve the live #liftExerciseWrap DOM node (input + dropdown) across
@@ -6572,6 +6695,7 @@ function renderLiftLog(panel) {
     </div>` : ''}
     ${cueCardBanner ? cueCardHtml(cueCardBanner) : ''}
     ${staleSessionPromptHtml()}
+    ${todaysLiftPanelHtml()}
     <div class="card">
       <div class="row" style="justify-content:space-between;align-items:center;">
         <h3 style="margin:0;">Log a lift</h3>
@@ -6624,16 +6748,6 @@ function renderLiftLog(panel) {
       ${liftFormError ? `<div class="muted small" style="color:var(--danger);margin-bottom:0.5rem;">${esc(liftFormError)}</div>` : ''}
       <button class="btn btn-primary" id="lift_save" ${liftFormSaving ? 'disabled' : ''}>${liftFormSaving ? 'Saving…' : 'Add lift'}</button>
     </div>
-    ${todaySummary.sets > 0 ? `
-    <div class="card">
-      <h3>Today so far</h3>
-      <div class="today-summary-row">
-        <div><div class="stat-num">${todaySummary.exerciseCount}</div><div class="muted small">exercise${todaySummary.exerciseCount === 1 ? '' : 's'}</div></div>
-        <div><div class="stat-num">${todaySummary.sets}</div><div class="muted small">set${todaySummary.sets === 1 ? '' : 's'}</div></div>
-        <div><div class="stat-num">${Math.round(todaySummary.volume).toLocaleString()}</div><div class="muted small">volume</div></div>
-      </div>
-      ${endWorkoutButtonHtml()}
-    </div>` : ''}
     ${exercises.length ? `
     <div class="card">
       <h3>Exercises</h3>
@@ -6782,9 +6896,8 @@ function renderLiftLog(panel) {
   const cueDismiss = $('#cueCardDismiss');
   if (cueDismiss) cueDismiss.addEventListener('click', () => { cueCardBanner = null; renderLiftsTab(); });
   wireCitationEvents(panel, renderLiftsTab);
+  wireTodaysLiftEditEvents(panel);
   $('#openGlossaryBtn').addEventListener('click', () => { showExerciseGlossary = true; renderLiftsTab(); });
-  const endWorkoutBtn = $('#endWorkoutBtn');
-  if (endWorkoutBtn) endWorkoutBtn.addEventListener('click', endWorkoutSession);
   const staleStillTraining = $('#staleStillTrainingBtn');
   if (staleStillTraining) staleStillTraining.addEventListener('click', () => { staleSessionPromptDismissed = true; renderLiftsTab(); });
   const staleEndWorkout = $('#staleEndWorkoutBtn');
