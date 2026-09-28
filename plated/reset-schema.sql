@@ -548,9 +548,12 @@ create table exercises (
   cue_mistake text not null,
   cue_bracing text not null,
   -- Static hypertrophy guidance (rep range, rest interval, tempo, a
-  -- one-line mind-muscle-connection cue). Citation copy for these lives in
-  -- CITATION_LIBRARY in index.html, not a column here, since the same
-  -- couple of citations are reused across every exercise.
+  -- one-line mind-muscle-connection cue). The rep-range citation lives in
+  -- CITATION_LIBRARY in index.html, not a column here, since it's the same
+  -- citation reused across every exercise. Rest interval and tempo show
+  -- with no citation attached — a hypertrophy-specific rest-interval
+  -- source is still unverified; do not attribute it to Grgic et al. 2018,
+  -- which covers strength outcomes, not hypertrophy.
   hypertrophy_rep_range text,
   hypertrophy_rest_interval text,
   hypertrophy_tempo text,

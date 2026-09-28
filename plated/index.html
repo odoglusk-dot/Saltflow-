@@ -5510,20 +5510,27 @@ function suggestedExercisesHtml(alreadyLoggedNames) {
 
 // Shared citation library backing the hypertrophy guidance shown per
 // exercise and the training-frequency note shown by the split card. Per
-// explicit product instruction, these three citations (copy preserved
-// verbatim below) are the ONLY ones this feature is allowed to cite — do
-// not add more without going back for verification first, since a
-// fabricated citation would undermine the app's "science-based"
-// positioning. `lines` is shown inline; `more` is the plain-language
-// "learn more" expansion, itself just elaborating on the same studies,
-// never introducing a new one.
+// explicit product instruction, only verified, explicitly-provided
+// citations belong here — do not add more without going back for
+// verification first, since a fabricated or misapplied citation would
+// undermine the app's "science-based" positioning. `lines` is shown
+// inline; `more` is the plain-language "learn more" expansion, itself
+// just elaborating on the same studies, never introducing a new one.
+//
+// Correction (2026-09): the hypertrophy entry originally also cited
+// Grgic, Schoenfeld, Skrepnik, Davies & Mikulic (2018, Sports Medicine)
+// for the rest-interval guidance shown alongside rep range — that review
+// is about muscular STRENGTH outcomes, not hypertrophy, so it's been
+// removed from here. The rest-interval/tempo fields on each exercise
+// still show (they're useful coaching guidance either way), just without
+// a citation until a hypertrophy-specific rest-interval source is
+// verified. Do not re-attach that 2018 review to hypertrophy claims.
 const CITATION_LIBRARY = {
   hypertrophy: {
     lines: [
       'Based on research showing hypertrophy gains are similar across a range of loads, provided sets are taken close to effort failure (Schoenfeld et al., 2017).',
-      'Based on research on rest interval duration and training outcomes (Grgic et al., 2018).',
     ],
-    more: 'A 2017 meta-analysis (Schoenfeld, Grgic, Ogborn & Krieger, Journal of Strength and Conditioning Research) found no significant difference in muscle growth between lower-load (under 60% of your one-rep max) and higher-load (over 60%) training, as long as sets were taken close to failure — that\'s why the rep range above is a suggestion, not a hard rule. A 2018 systematic review (Grgic, Schoenfeld, et al., Sports Medicine) looked specifically at how the length of rest between sets affects strength and muscle growth, which the rest suggestion above is based on.',
+    more: 'A 2017 meta-analysis (Schoenfeld, Grgic, Ogborn & Krieger, Journal of Strength and Conditioning Research) found no significant difference in muscle growth between lower-load (under 60% of your one-rep max) and higher-load (over 60%) training, as long as sets were taken close to failure — that\'s why the rep range above is a suggestion, not a hard rule. The rest-interval and tempo notes above are general coaching guidance rather than a specific research citation.',
   },
   frequency: {
     lines: [

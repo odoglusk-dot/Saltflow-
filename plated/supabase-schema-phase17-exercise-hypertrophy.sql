@@ -11,14 +11,18 @@
 -- exercises.id by foreign key (lifts references an exercise by its name,
 -- a plain text column), so there's no dependent data to preserve here.
 --
--- Citation copy for the rep-range and rest-interval guidance lives in
--- CITATION_LIBRARY in index.html (static JS, same pattern as the Layer 1
--- tips library), not a database column — it's the same two citations
--- reused across every exercise's hypertrophy section, not a per-exercise
--- value, so a column here would just duplicate the same string ~75 times
--- for no benefit. The third provided citation (training frequency) isn't
--- per-exercise at all — it's surfaced once, next to the training split
--- card, where frequency actually gets decided.
+-- Citation copy for the rep-range guidance lives in CITATION_LIBRARY in
+-- index.html (static JS, same pattern as the Layer 1 tips library), not a
+-- database column — it's the same citation reused across every exercise's
+-- hypertrophy section, not a per-exercise value, so a column here would
+-- just duplicate the same string ~75 times for no benefit. The
+-- rest-interval and tempo fields below are shown as general coaching
+-- guidance with no citation attached — the source originally cited for
+-- rest interval (Grgic et al., 2018) covers strength outcomes, not
+-- hypertrophy, so it was removed rather than misapplied. A separate
+-- training-frequency citation isn't per-exercise at all — it's surfaced
+-- once, next to the training split card, where frequency actually gets
+-- decided.
 
 alter table exercises add column if not exists hypertrophy_rep_range text;
 alter table exercises add column if not exists hypertrophy_rest_interval text;

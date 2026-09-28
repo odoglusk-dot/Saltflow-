@@ -412,14 +412,17 @@ library plus the four `hypertrophy_*` columns above; not user-editable.
   bracing) — static copy, not AI-generated, same spirit as the Layer 1
   tips library.
 - **Hypertrophy guidance**: rep range/rest interval/tempo/mind-muscle cue,
-  shown alongside the cue card. The two citations backing rep-range and
-  rest-interval guidance (Schoenfeld et al. 2017; Grgic et al. 2018) live in
-  a static `CITATION_LIBRARY` object in index.html, not a column here —
-  they're the same two citations reused across every exercise, so a column
-  would just duplicate the same string ~75 times. A third citation
-  (Schoenfeld et al. 2016, on ≥2x/week training frequency) isn't
-  per-exercise at all and surfaces once, next to the Training Split card,
-  where frequency actually gets decided.
+  shown alongside the cue card. The citation backing rep-range guidance
+  (Schoenfeld et al. 2017) lives in a static `CITATION_LIBRARY` object in
+  index.html, not a column here — it's the same citation reused across
+  every exercise, so a column would just duplicate the same string ~75
+  times. Rest interval and tempo show as general coaching guidance with no
+  citation attached (the source originally cited for rest interval — Grgic
+  et al. 2018 — covers strength outcomes, not hypertrophy, and was removed
+  rather than misapplied; a hypertrophy-specific rest-interval source is
+  still unverified). A separate citation (Schoenfeld et al. 2016, on
+  ≥2x/week training frequency) isn't per-exercise at all and surfaces once,
+  next to the Training Split card, where frequency actually gets decided.
 - **Muscle Map**: `body_region` is the same taxonomy the muscle map
   already visualizes from `lifts.body_region` — a lift logged against a
   name found here can default its `body_region`/`muscle_group` from this
