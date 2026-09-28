@@ -22,9 +22,10 @@ referral_code         text unique
 email_reminders_opt_out boolean (default: false)
 onboarded_at          timestamptz — set once the first-time onboarding overlay finishes/is skipped
 glossary_exercises_viewed text[] (default: '{}') — distinct Exercise Glossary cue cards expanded
+learning_paths_completed text[] (default: '{}') — path ids from LEARNING_PATHS finished (also feeds Learning achievements)
 created_at            timestamptz
 ```
-**Frontend reads/writes:** `id, display_name, age, sex, height_cm, activity_level, age_over_18, age_gate_shown_at, parental_consent_at, referral_code, email_reminders_opt_out, onboarded_at, glossary_exercises_viewed`
+**Frontend reads/writes:** `id, display_name, age, sex, height_cm, activity_level, age_over_18, age_gate_shown_at, parental_consent_at, referral_code, email_reminders_opt_out, onboarded_at, glossary_exercises_viewed, learning_paths_completed`
 
 `age_over_18`/`age_gate_shown_at`/`parental_consent_at` are set once at
 signup (see the `#authForm` submit handler and `ensureProfileAndGoals()` in
@@ -699,4 +700,9 @@ existing live database; fresh installs get it from `reset-schema.sql`.
 For warm-up set tracking (adds `lifts.warmup_per_set`, feeding the weekly
 hard-sets-per-muscle feature): run
 **`supabase-schema-phase19-warmup-sets.sql`** against an existing live
+database; fresh installs get it from `reset-schema.sql`.
+
+For learning-path completion tracking (adds
+`profiles.learning_paths_completed`): run
+**`supabase-schema-phase20-learning-paths.sql`** against an existing live
 database; fresh installs get it from `reset-schema.sql`.

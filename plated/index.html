@@ -2986,6 +2986,11 @@ const ACHIEVEMENT_LIBRARY = [
     description: `Looked up the cues for ${GLOSSARY_EXPLORER_THRESHOLD} different exercises in the glossary.`,
     check: (ctx) => (ctx.profile?.glossary_exercises_viewed || []).length >= GLOSSARY_EXPLORER_THRESHOLD,
   },
+  {
+    id: 'learning_path_first', category: 'learning', title: 'First Learning Path Completed',
+    description: 'Read all the way through one of the Learning Paths in the guide.',
+    check: (ctx) => (ctx.profile?.learning_paths_completed || []).length >= 1,
+  },
 ];
 
 let newlyUnlockedAchievementId = null; // most recent unlock this session — dismissible banner
@@ -4371,6 +4376,15 @@ function renderUserGuide(panel) {
         ${USER_GUIDE_SECTIONS.map((s) => `<button class="chip" data-guide-jump="${s.id}">${esc(s.title)}</button>`).join('')}
       </div>
     </div>
+    <div class="card">
+      <div class="row" style="justify-content:space-between;align-items:center;">
+        <div>
+          <h3 style="margin:0;">Learning Paths</h3>
+          <p class="muted small" style="margin:0.2rem 0 0;">Short mini-courses — Progressive Overload, Training Volume, and more.</p>
+        </div>
+        <button class="btn btn-sm" id="openLearningPathsBtn" style="flex:none;">Browse</button>
+      </div>
+    </div>
     ${USER_GUIDE_SECTIONS.map((section) => {
       const entries = section.entries.filter(matches);
       if (!entries.length) return '';
@@ -4389,6 +4403,11 @@ function renderUserGuide(panel) {
     }).join('')}
   `;
   $('#closeGuideBtn').addEventListener('click', () => { showUserGuide = false; renderProfile(); });
+  $('#openLearningPathsBtn').addEventListener('click', () => {
+    showLearningPaths = true;
+    openLearningPathId = null;
+    renderProfile();
+  });
   $('#guideSearch').addEventListener('input', (e) => { guideSearch = e.target.value; renderUserGuide(panel); });
   $$('[data-guide-jump]', panel).forEach((btn) => btn.addEventListener('click', () => {
     $(`#guide-section-${btn.dataset.guideJump}`, panel)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -4400,8 +4419,151 @@ function renderUserGuide(panel) {
   }));
 }
 
+// ── Learning Paths (mini-courses) ────────────────────────────────────────
+// Static, pre-written cards — same convention as USER_GUIDE_SECTIONS and
+// TIP_LIBRARY. Reachable from inside the User Guide rather than its own
+// top-level nav entry, per the "guide/glossary area" placement asked for.
+// Completing a path (reaching and dismissing the last card) is recorded
+// in profiles.learning_paths_completed and feeds the
+// 'learning_path_first' Learning achievement.
+const LEARNING_PATHS = [
+  {
+    id: 'progressive-overload', title: 'Progressive Overload',
+    cards: [
+      { title: 'What it is', body: 'Progressive overload means gradually increasing the demand on your muscles over time — more weight, more reps, more sets, or better form — so your body keeps adapting instead of plateauing.' },
+      { title: 'Why it matters', body: 'Muscles only get stronger when they\'re asked to do something harder than they\'re used to. Without progressive overload, your body has no reason to keep adapting.' },
+      { title: 'Ways to progress', body: 'You don\'t have to add weight every session. Adding a rep, adding a set, slowing the tempo, shortening rest, or improving your range of motion all count as progress too.' },
+      { title: 'It isn\'t always linear', body: 'Some weeks you\'ll progress, some weeks you\'ll hold steady, and occasionally you\'ll need to pull back (a deload). That\'s normal, not failure.' },
+      { title: 'Tracking makes it real', body: 'You can\'t progressively overload what you don\'t track. Logging your lifts here is what lets you see the trend and know what "harder than last time" actually means.' },
+      { title: 'A simple way to start', body: 'Pick one lift you do every week and aim to beat last week\'s numbers in any way — one more rep, five more pounds, one more set. That\'s progressive overload in practice.' },
+    ],
+  },
+  {
+    id: 'training-volume', title: 'Training Volume',
+    cards: [
+      { title: 'What "volume" means', body: 'Training volume usually means your total hard sets for a muscle group over a week — not just how heavy you lift, but how much work you do overall.' },
+      { title: 'Why volume matters', body: 'More total volume, within reason, tends to drive more muscle growth — up to a point where extra sets stop paying off and start just adding fatigue.' },
+      { title: 'There\'s a sweet spot', body: 'Too little volume barely stimulates a muscle. Too much and you can\'t recover between sessions. Most lifters land somewhere in the middle, and it shifts as training experience grows.' },
+      { title: 'Quality over pure numbers', body: 'A set taken to a real, demanding effort counts more than three sloppy sets. Volume matters, but only the sets that actually challenge the muscle count as productive.' },
+      { title: 'How Krafft shows this', body: 'The Weekly Training Volume card on your Lifts tab totals hard sets per muscle group over the last 7 days, so you can see at a glance if something\'s being neglected — or overdone.' },
+      { title: 'Volume isn\'t the whole picture', body: 'Volume interacts with frequency, intensity, and recovery. Increasing volume without also managing those tends to backfire — more isn\'t automatically better.' },
+    ],
+  },
+  {
+    id: 'effort-failure', title: 'Effort and Proximity to Failure',
+    cards: [
+      { title: 'What "proximity to failure" means', body: 'This is how close a set gets you to the point where you physically couldn\'t complete another rep with good form.' },
+      { title: 'Why effort matters', body: 'It\'s less about the exact number of reps and more about how close to failure you take a set — sets taken to a real, demanding effort tend to build more muscle than easy ones.' },
+      { title: 'You don\'t have to go to total failure', body: 'Training to complete failure every set adds a lot of fatigue for little extra benefit. Stopping a rep or two short ("leaving reps in the tank") is usually the more sustainable approach.', citationTopic: 'failure' },
+      { title: 'RPE — a simple way to gauge effort', body: 'RPE (Rate of Perceived Exertion) is a 1-10 scale for how hard a set felt. An RPE 8 means you could\'ve done about 2 more reps. Most working sets in the 7-9 range work well for most goals.' },
+      { title: 'Effort should scale with the exercise', body: 'Going close to failure on a heavy compound lift (like a squat) carries more fatigue cost than on an isolation exercise (like a curl) — it\'s fine, even useful, to push isolation work harder.' },
+    ],
+  },
+  {
+    id: 'recovery-sleep', title: 'Recovery and Sleep',
+    cards: [
+      { title: 'Recovery is where growth happens', body: 'Training creates the stimulus for adaptation, but the actual muscle repair and growth happens during recovery — mostly while you sleep.' },
+      { title: 'Sleep and training performance', body: 'Poor sleep is linked to reduced strength, slower recovery, and a higher perceived effort for the same weights — it\'s not just about feeling tired.' },
+      { title: 'Recovery isn\'t just sleep', body: 'Nutrition (especially protein and total calories), stress levels, and time between hard sessions for the same muscle group all factor into how well you recover.' },
+      { title: 'Signs you might be under-recovered', body: 'Persistent soreness, declining performance on lifts you were previously progressing on, and a general feeling of burnout can all be signs you need more recovery, not more training.' },
+      { title: 'Recovery is trainable, not just passive', body: 'A consistent sleep schedule, managing stress, and building rest days into your training split are active choices — recovery isn\'t just something that happens to you.' },
+    ],
+  },
+  {
+    id: 'protein-nutrition-basics', title: 'Protein and Nutrition Basics',
+    cards: [
+      { title: 'Why protein matters for training', body: 'Protein supplies the amino acids your body uses to repair and build muscle tissue after training — without enough of it, some of the adaptation you\'re working for doesn\'t happen.' },
+      { title: 'How much is "enough"', body: 'Common protein targets for people strength training run roughly 0.7–1g per pound of bodyweight per day, though needs vary by individual, goal, and how much muscle mass you\'re carrying.' },
+      { title: 'Spreading protein across the day', body: 'Distributing protein across meals rather than getting it all at once may help your body use it more effectively — see the per-meal breakdown on your Log Food tab.' },
+      { title: 'Protein isn\'t the whole picture', body: 'Total calories matter just as much — you can\'t build muscle in a large calorie deficit no matter how much protein you eat, and you won\'t lose fat in a surplus no matter how "clean" the food is.' },
+      { title: 'Consistency beats perfection', body: 'Hitting your protein target most days matters far more than hitting it exactly every single day. A flexible, sustainable approach beats a rigid one you can\'t stick to.' },
+    ],
+  },
+];
+let showLearningPaths = false;
+let openLearningPathId = null;
+let learningPathCardIndex = 0;
+
+function learningPathsListHtml() {
+  const completed = new Set(state.profile?.learning_paths_completed || []);
+  return `<div class="card">
+    <div class="row" style="justify-content:space-between;align-items:center;">
+      <h3 style="margin:0;">Learning Paths</h3>
+      <button class="btn btn-sm btn-ghost" id="closeLearningPathsBtn" style="flex:none;">✕ Close</button>
+    </div>
+    <p class="muted small" style="margin-top:0.25rem;">Short, plain-language mini-courses — a few cards each, read in order.</p>
+  </div>
+  ${LEARNING_PATHS.map((path) => `
+    <div class="log-row" style="cursor:pointer;" data-path-open="${path.id}">
+      <div>
+        <div class="name">${completed.has(path.id) ? '✓ ' : ''}${esc(path.title)}</div>
+        <div class="macros">${path.cards.length} cards</div>
+      </div>
+      <span class="muted">${completed.has(path.id) ? 'Completed' : 'Start'}</span>
+    </div>`).join('')}`;
+}
+
+function learningPathReaderHtml() {
+  const path = LEARNING_PATHS.find((p) => p.id === openLearningPathId);
+  if (!path) return '';
+  const idx = Math.min(learningPathCardIndex, path.cards.length - 1);
+  const card = path.cards[idx];
+  const isLast = idx === path.cards.length - 1;
+  return `<div class="card">
+    <div class="row" style="justify-content:space-between;align-items:center;">
+      <button class="btn btn-sm btn-ghost" id="learningPathBackBtn">← Paths</button>
+      <span class="muted small">${idx + 1} / ${path.cards.length}</span>
+    </div>
+    <div class="row" style="gap:0.3rem;margin:0.6rem 0;">
+      ${path.cards.map((_, i) => `<span style="flex:1;height:4px;border-radius:2px;background:${i <= idx ? 'var(--accent)' : 'var(--surface-2)'};"></span>`).join('')}
+    </div>
+    <h3 style="margin:0.5rem 0 0.5rem;">${esc(path.title)}</h3>
+    <h4 style="margin:0 0 0.4rem;color:var(--accent);">${esc(card.title)}</h4>
+    <p style="margin:0;">${esc(card.body)}</p>
+    ${card.citationTopic ? citationBlockHtml(card.citationTopic, `learningpath:${path.id}:${idx}`) : ''}
+    <div class="row" style="justify-content:space-between;margin-top:1rem;">
+      <button class="btn btn-sm" id="learningPathPrevBtn" ${idx === 0 ? 'disabled' : ''}>← Back</button>
+      ${isLast
+        ? `<button class="btn btn-sm btn-primary" id="learningPathFinishBtn">Finish path</button>`
+        : `<button class="btn btn-sm btn-primary" id="learningPathNextBtn">Next →</button>`}
+    </div>
+  </div>`;
+}
+
+function renderLearningPaths(panel) {
+  panel.innerHTML = openLearningPathId ? learningPathReaderHtml() : learningPathsListHtml();
+  const closeBtn = $('#closeLearningPathsBtn', panel);
+  if (closeBtn) closeBtn.addEventListener('click', () => { showLearningPaths = false; renderProfile(); });
+  $$('[data-path-open]', panel).forEach((row) => row.addEventListener('click', () => {
+    openLearningPathId = row.dataset.pathOpen;
+    learningPathCardIndex = 0;
+    renderLearningPaths(panel);
+  }));
+  const backBtn = $('#learningPathBackBtn', panel);
+  if (backBtn) backBtn.addEventListener('click', () => { openLearningPathId = null; renderLearningPaths(panel); });
+  const prevBtn = $('#learningPathPrevBtn', panel);
+  if (prevBtn) prevBtn.addEventListener('click', () => { learningPathCardIndex = Math.max(0, learningPathCardIndex - 1); renderLearningPaths(panel); });
+  const nextBtn = $('#learningPathNextBtn', panel);
+  if (nextBtn) nextBtn.addEventListener('click', () => { learningPathCardIndex += 1; renderLearningPaths(panel); });
+  const finishBtn = $('#learningPathFinishBtn', panel);
+  if (finishBtn) finishBtn.addEventListener('click', async () => {
+    const completed = new Set(state.profile?.learning_paths_completed || []);
+    if (!completed.has(openLearningPathId)) {
+      completed.add(openLearningPathId);
+      const updated = Array.from(completed);
+      state.profile = { ...state.profile, learning_paths_completed: updated };
+      const { error } = await supabase.from('profiles').update({ learning_paths_completed: updated }).eq('id', state.user.id);
+      if (!error) checkAndUnlockAchievements();
+    }
+    openLearningPathId = null;
+    renderLearningPaths(panel);
+  });
+  wireCitationEvents(panel, () => renderLearningPaths(panel));
+}
+
 function renderProfile() {
   const panel = $('#panel-profile');
+  if (showLearningPaths) { renderLearningPaths(panel); return; }
   if (showUserGuide) { renderUserGuide(panel); return; }
   const p = state.profile || {};
   const bs = state.bodyStats || {};
@@ -5659,6 +5821,10 @@ function suggestedExercisesHtml(alreadyLoggedNames) {
 // still show (they're useful coaching guidance either way), just without
 // a citation until a hypertrophy-specific rest-interval source is
 // verified. Do not re-attach that 2018 review to hypertrophy claims.
+//
+// `failure` (added for the Effort and Proximity to Failure learning path)
+// has no publication year in the product brief that added it — shown
+// without one rather than guessing at a date.
 const CITATION_LIBRARY = {
   hypertrophy: {
     lines: [
@@ -5671,6 +5837,12 @@ const CITATION_LIBRARY = {
       'Based on research showing muscle groups trained 2x/week or more tend to see better growth outcomes than once weekly (Schoenfeld et al., 2016).',
     ],
     more: 'A 2016 meta-analysis (Schoenfeld, Grgic & Krieger, Sports Medicine) found that muscle groups trained two or more times per week saw significantly better hypertrophy outcomes than muscle groups trained just once a week — worth keeping in mind when deciding how to split your training days.',
+  },
+  failure: {
+    lines: [
+      'Based on research comparing training to failure with stopping a rep or two short, which found no significant overall difference in hypertrophy (Grgic, Schoenfeld, Orazem & Sabol).',
+    ],
+    more: 'A systematic review and meta-analysis (Grgic, Schoenfeld, Orazem & Sabol) comparing sets taken to complete failure against sets stopped short of failure found no significant overall difference in muscle growth between the two approaches — one reason training to failure on every set isn\'t necessary to make progress.',
   },
 };
 // Session-only footnote state (dismissed/expanded), keyed per rendered

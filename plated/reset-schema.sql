@@ -57,6 +57,10 @@ create table profiles (
   -- Exercise Glossary — input to the Learning-category achievement.
   -- See supabase-schema-phase15-achievements.sql.
   glossary_exercises_viewed text[] not null default '{}',
+  -- Path ids from LEARNING_PATHS (index.html) this account has finished —
+  -- also feeds the Learning achievement category. See
+  -- supabase-schema-phase20-learning-paths.sql.
+  learning_paths_completed text[] not null default '{}',
   created_at timestamptz not null default now()
 );
 
