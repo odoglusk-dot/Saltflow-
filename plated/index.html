@@ -1386,20 +1386,38 @@ const COMMON_FOODS = [
   { name: 'Thousand Island dressing (2 tbsp)', calories: 140, protein_g: 0, carbs_g: 5, fat_g: 13 },
 ];
 
+// evidenceRating/whatFor are the new evidence-card fields (Strong/
+// Moderate/Limited/Weak + a 1-2 sentence plain-language summary), added
+// only to the 5 starting supplements requested — the rest of this list
+// keeps its existing benefits/drawbacks/notes format unchanged. `notes`
+// already carries a typical dosing range for these entries, so the
+// evidence card reuses it rather than duplicating a new field. The
+// rating itself is a general characterization, not sourced from a
+// specific study yet — see the "Source" toggle in renderSupplements(),
+// which deliberately shows nothing but a pending-verification note. Do
+// not fill it in with an invented citation.
 const SUPPLEMENT_GUIDE = [
-  { name: 'Whey Protein', benefits: ['Convenient way to hit a daily protein target', 'Fast-digesting — good post-workout', 'Complete amino acid profile'],
+  { name: 'Whey Protein', evidenceRating: 'Strong',
+    whatFor: 'A convenient, fast-digesting protein source that helps you hit a daily protein target supporting muscle repair and growth — the benefit comes from meeting your protein needs, not from whey being special.',
+    benefits: ['Convenient way to hit a daily protein target', 'Fast-digesting — good post-workout', 'Complete amino acid profile'],
     drawbacks: ['Can cause GI discomfort/bloating if lactose sensitive (try isolate instead)', 'Not a replacement for whole-food protein sources', 'Unnecessary if diet already meets protein goals'],
     notes: 'Typical dose: 1 scoop (~24g protein) post-workout or as a snack.' },
-  { name: 'Creatine Monohydrate', benefits: ['One of the most researched sports supplements that exists', 'Supports strength/power output and recovery', 'Safe at standard doses per available research'],
+  { name: 'Creatine Monohydrate', evidenceRating: 'Strong',
+    whatFor: 'Helps regenerate ATP faster during short, intense efforts, supporting strength, power output, and training volume.',
+    benefits: ['One of the most researched sports supplements that exists', 'Supports strength/power output and recovery', 'Safe at standard doses per available research'],
     drawbacks: ['Can cause temporary water retention (mostly intracellular, not fat)', 'Minor GI upset if taken in one large dose', 'More relevant to strength/power sports than pure endurance'],
     notes: 'Typical dose: 3–5g/day, any time of day. No "loading phase" needed.' },
   { name: 'Multivitamin', benefits: ['Simple backstop against gaps in a busy training diet', 'Inexpensive insurance'],
     drawbacks: ['No benefit above what a varied diet already provides', 'Megadoses of fat-soluble vitamins (A, D, E, K) can actually be harmful'],
     notes: 'Pick one near 100% daily value — skip ones advertising "1000%".' },
-  { name: 'Vitamin D3', benefits: ['Many indoor/northern-climate athletes run low', 'Supports bone health and immune function — both relevant to injury recovery'],
+  { name: 'Vitamin D3', evidenceRating: 'Moderate',
+    whatFor: 'Supports bone health and immune function, and correcting a genuine deficiency may help those specific issues — general performance benefits beyond correcting a deficiency are less consistently shown.',
+    benefits: ['Many indoor/northern-climate athletes run low', 'Supports bone health and immune function — both relevant to injury recovery'],
     drawbacks: ['Hard to overdose by accident, but very high long-term doses can cause toxicity', 'Guessing a dose is worse than testing blood levels'],
     notes: 'Common starting range: 1000–2000 IU/day. Ask a doctor for bloodwork-based dosing.' },
-  { name: 'Omega-3 Fish Oil', benefits: ['Supports cardiovascular and joint health', 'Some evidence for reduced exercise-induced inflammation'],
+  { name: 'Omega-3 Fish Oil', evidenceRating: 'Moderate',
+    whatFor: 'Mainly supported for cardiovascular and joint health, with some evidence for reduced exercise-induced inflammation — effects are generally modest rather than dramatic.',
+    benefits: ['Supports cardiovascular and joint health', 'Some evidence for reduced exercise-induced inflammation'],
     drawbacks: ['Fishy aftertaste/burps for some people', 'Blood-thinning effect at high doses matters around injuries/surgery', 'Quality varies a lot between brands'],
     notes: 'Look for combined EPA+DHA around 1–2g/day, or eat fatty fish twice a week instead.' },
   { name: 'Magnesium', benefits: ['Involved in muscle contraction/relaxation', 'Some athletes report better sleep, fewer cramps'],
@@ -1411,7 +1429,8 @@ const SUPPLEMENT_GUIDE = [
   { name: 'Iron', benefits: ['Genuinely important for endurance athletes and anyone with heavy training volume', 'Deficiency shows up as fatigue and worse performance'],
     drawbacks: ['This is the one entry here that should never be started on a whim — iron overload is toxic and hard to reverse', 'Supplementing without an actual deficiency does nothing helpful'],
     notes: 'Get a blood ferritin test before supplementing. Do not self-prescribe.' },
-  { name: 'Caffeine / Pre-Workout Blends', caution: true,
+  { name: 'Caffeine / Pre-Workout Blends', caution: true, evidenceRating: 'Strong',
+    whatFor: 'A well-studied stimulant that can modestly improve focus, reduce perceived effort, and support performance across many kinds of training — the caution below is about commercial blends and teen-specific dosing, not caffeine\'s effect itself.',
     benefits: ['Caffeine has solid evidence for improved focus and perceived exertion during training'],
     drawbacks: ['Many commercial pre-workout blends pack 300mg+ caffeine per scoop, well above what is appropriate for a teenage athlete', 'Proprietary stimulant blends often under-disclose ingredients', 'Can cause jitteriness, disrupted sleep, and a dependency on stimulants to feel "ready" to train'],
     notes: 'For a teenage athlete specifically: skip stimulant-heavy pre-workout products entirely. Sleep, food, and hydration do more for training quality with none of the downside.' },
@@ -4070,6 +4089,11 @@ function weightChartSvg(sorted) {
 // ══════════════════════════════════════════════════════════════════
 // SUPPLEMENTS TAB
 // ══════════════════════════════════════════════════════════════════
+const EVIDENCE_RATING_COLORS = { Strong: 'var(--success)', Moderate: '#C6A15B', Limited: '#E8CB88', Weak: 'var(--text-dim)' };
+// Session-only — which supplement cards have their "Source" note expanded.
+// Not user data worth a database column, same as citationExpanded.
+const supplementSourceExpanded = new Set();
+
 function renderSupplements() {
   const panel = $('#panel-supplements');
   panel.innerHTML = `
@@ -4102,6 +4126,16 @@ function renderSupplements() {
       ${SUPPLEMENT_GUIDE.map((s) => `
         <div class="card guide-card ${s.caution ? 'caution' : ''}" style="margin-bottom:0.75rem;">
           <div class="col-title"><h3 style="margin:0;">${esc(s.name)}</h3>${s.caution ? '<span class="badge" style="background:var(--danger);color:#fff;">CAUTION</span>' : ''}</div>
+          ${s.evidenceRating ? `
+          <div class="row" style="align-items:center;gap:0.5rem;margin:0.3rem 0 0.5rem;">
+            <span class="badge" style="background:${EVIDENCE_RATING_COLORS[s.evidenceRating]};color:#1A1A1A;">${esc(s.evidenceRating)} evidence</span>
+          </div>
+          <p style="margin:0 0 0.5rem;font-size:0.88rem;">${esc(s.whatFor)}</p>
+          <div style="margin-bottom:0.6rem;">
+            <button class="btn-link" data-supplement-source="${esc(s.name)}">${supplementSourceExpanded.has(s.name) ? 'Hide source' : 'Source'}</button>
+            ${supplementSourceExpanded.has(s.name) ? `<p class="muted small" style="margin-top:0.3rem;">Not yet backed by a specific verified citation — flagged for review before this evidence rating ships as a sourced claim. Treat it as general information, not medical advice, either way.</p>` : ''}
+          </div>
+          ` : ''}
           <strong style="font-size:0.85rem;color:var(--success);">Benefits</strong>
           <ul style="margin:0.3rem 0 0.7rem 1.1rem; font-size:0.88rem;">${s.benefits.map((b) => `<li>${esc(b)}</li>`).join('')}</ul>
           <strong style="font-size:0.85rem;color:var(--danger);">Drawbacks</strong>
@@ -4127,6 +4161,11 @@ function renderSupplements() {
     await supabase.from('supplement_logs').delete().eq('id', btn.dataset.supDel);
     await loadSupplementLogs();
     renderAll();
+  }));
+  $$('[data-supplement-source]', panel).forEach((btn) => btn.addEventListener('click', () => {
+    const name = btn.dataset.supplementSource;
+    if (supplementSourceExpanded.has(name)) supplementSourceExpanded.delete(name); else supplementSourceExpanded.add(name);
+    renderSupplements();
   }));
 }
 
