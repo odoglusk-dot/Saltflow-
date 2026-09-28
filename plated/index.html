@@ -273,6 +273,8 @@
   .reps-per-set-cell { display: flex; flex-direction: column; align-items: center; gap: 0.15rem; }
   .reps-per-set-cell span { font-size: 0.68rem; color: var(--text-dim); }
   .reps-per-set-cell .input { width: 44px; text-align: center; padding: 0.4rem 0; }
+  .warmup-toggle { display: flex; align-items: center; gap: 0.2rem; font-size: 0.62rem; color: var(--text-dim); white-space: nowrap; }
+  .warmup-toggle input { margin: 0; width: 12px; height: 12px; }
   .live-comparison { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem; }
   .live-comparison-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.5rem; }
   .mini-line-svg { width: 100%; height: 60px; display: block; }
@@ -348,6 +350,13 @@
   .muscle-group-legend { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 0.5rem; }
   .legend-item { display: flex; align-items: center; gap: 0.3rem; font-size: 0.7rem; color: var(--text-dim); }
   .legend-swatch { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+  .weekly-sets-bars { margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.4rem; }
+  .weekly-sets-row { display: flex; align-items: center; gap: 0.5rem; }
+  .weekly-sets-label { width: 72px; flex-shrink: 0; font-size: 0.72rem; color: var(--text-dim); }
+  .weekly-sets-bar-track { flex: 1; height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+  .weekly-sets-bar-fill { height: 100%; border-radius: 4px; background: var(--accent); }
+  .weekly-sets-bar-fill.in-range { background: var(--success); }
+  .weekly-sets-count { width: 30px; flex-shrink: 0; text-align: right; font-size: 0.75rem; color: var(--text-dim); }
   .plateau-row { font-size: 0.85rem; padding: 0.3rem 0; cursor: pointer; }
   .day-card { padding: 0; overflow: hidden; }
   .day-card-head { padding: 0.75rem; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
@@ -4992,6 +5001,95 @@ function bodyMapSvg(view, regionLevels, selectedRegion) {
   return `<svg viewBox="0 0 160 300" class="body-map-svg">${decorative}${regions}</svg>`;
 }
 
+// ── Weekly hard sets per muscle group ────────────────────────────────────
+// A finer-grained 14-key taxonomy than body_region above (splits
+// "shoulders" into delts, "back" into lats/traps/lowerback, adds
+// obliques) — see supabase-schema-phase18-exercise-tags.sql. Drives this
+// card only; the existing muscleMapHtml() below still uses body_region
+// until the Option B muscle map rebuild replaces it with this same
+// calculation.
+const MUSCLE_MAP_KEYS = ['chest', 'delts', 'biceps', 'triceps', 'forearms', 'abs', 'obliques', 'quads', 'calves', 'traps', 'lats', 'lowerback', 'glutes', 'hamstrings'];
+const MUSCLE_MAP_KEY_LABELS = {
+  chest: 'Chest', delts: 'Delts', biceps: 'Biceps', triceps: 'Triceps', forearms: 'Forearms',
+  abs: 'Abs', obliques: 'Obliques', quads: 'Quads', calves: 'Calves', traps: 'Traps',
+  lats: 'Lats', lowerback: 'Lower Back', glutes: 'Glutes', hamstrings: 'Hamstrings',
+};
+// A commonly cited range, not a specific verified citation — shown to the
+// user as a guideline, never as a rule. See the "why this matters" copy
+// in weeklyHardSetsHtml() below.
+const WEEKLY_SETS_GUIDELINE = { low: 10, high: 20 };
+// A set counts fully toward its primary muscle and at partial value
+// toward secondary muscles it also trains. This weighting is a proposed
+// default, not a cited figure — flagged for review, same as the
+// guideline range above.
+const SECONDARY_MUSCLE_SET_WEIGHT = 0.5;
+
+// warmup_per_set is '{}' (empty) for any row logged before that column
+// existed, or where the user never touched the warm-up toggle — treated
+// as "nothing flagged," so every set in that row counts as working,
+// exactly as it always has.
+function workingSetCount(lift) {
+  const setCount = (lift.reps_per_set && lift.reps_per_set.length) || lift.sets || 0;
+  const warmup = lift.warmup_per_set || [];
+  if (!warmup.length) return setCount;
+  let count = 0;
+  for (let i = 0; i < setCount; i++) if (!warmup[i]) count++;
+  return count;
+}
+
+function computeWeeklyHardSetsByMuscle(lifts, exercises) {
+  const cutoff = subtractDays(localDateStr(), 6); // rolling 7-day window, inclusive of today
+  const totals = {};
+  MUSCLE_MAP_KEYS.forEach((k) => { totals[k] = 0; });
+  for (const l of lifts) {
+    if (l.date < cutoff) continue;
+    const def = exercises.find((e) => e.name.toLowerCase() === l.exercise.trim().toLowerCase());
+    // An exercise with no muscle_map_key (not in the library, or a custom
+    // typed-in name) can't be attributed to a muscle — skipped rather than
+    // guessed at.
+    if (!def || !def.muscle_map_key) continue;
+    const sets = workingSetCount(l);
+    if (sets <= 0) continue;
+    totals[def.muscle_map_key] = (totals[def.muscle_map_key] || 0) + sets;
+    (def.muscle_map_secondary_keys || []).forEach((k) => {
+      totals[k] = (totals[k] || 0) + sets * SECONDARY_MUSCLE_SET_WEIGHT;
+    });
+  }
+  return totals;
+}
+
+let weeklySetsInfoExpanded = false;
+
+function weeklyHardSetsHtml(lifts) {
+  const totals = computeWeeklyHardSetsByMuscle(lifts, state.exercises);
+  const maxForScale = Math.max(WEEKLY_SETS_GUIDELINE.high, ...Object.values(totals));
+  return `<div class="card">
+    <div class="row" style="justify-content:space-between;align-items:center;">
+      <h3 style="margin:0;">Weekly Training Volume</h3>
+      <button class="btn btn-sm btn-ghost" id="weeklySetsInfoBtn" style="flex:none;">${weeklySetsInfoExpanded ? 'Hide' : 'Why this matters'}</button>
+    </div>
+    <p class="muted small" style="margin-top:0.25rem;">Hard working sets per muscle, last 7 days, against a commonly cited guideline range of ${WEEKLY_SETS_GUIDELINE.low}–${WEEKLY_SETS_GUIDELINE.high} sets/week — a guideline, not a rule.</p>
+    ${weeklySetsInfoExpanded ? `<p class="muted small" style="background:var(--surface-2);border-radius:8px;padding:0.6rem 0.75rem;">Weekly set volume is one of the most-discussed variables in hypertrophy training, and a range of roughly ${WEEKLY_SETS_GUIDELINE.low}–${WEEKLY_SETS_GUIDELINE.high} sets per muscle per week is commonly cited as a reasonable starting point. We don't have a specific verified research citation for this exact range yet, so treat the bars below as a rough guide for spotting muscles you're training a lot, a little, or not at all — not a target to hit precisely. A muscle's secondary involvement (e.g. triceps assisting a bench press) counts at half a set's value, only working sets count (mark warm-ups when you log), and sets from an exercise not in the library (a custom-typed name) aren't counted here.</p>` : ''}
+    <div class="weekly-sets-bars">
+      ${MUSCLE_MAP_KEYS.map((k) => {
+        const val = Math.round(totals[k] * 10) / 10;
+        const pct = Math.max(0, Math.min(100, (val / maxForScale) * 100));
+        const inRange = val >= WEEKLY_SETS_GUIDELINE.low && val <= WEEKLY_SETS_GUIDELINE.high;
+        return `<div class="weekly-sets-row">
+          <span class="weekly-sets-label">${MUSCLE_MAP_KEY_LABELS[k]}</span>
+          <div class="weekly-sets-bar-track"><div class="weekly-sets-bar-fill ${inRange ? 'in-range' : ''}" style="width:${pct}%;"></div></div>
+          <span class="weekly-sets-count mono">${val}</span>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`;
+}
+
+function wireWeeklyHardSetsEvents(panel) {
+  const infoBtn = $('#weeklySetsInfoBtn', panel);
+  if (infoBtn) infoBtn.addEventListener('click', () => { weeklySetsInfoExpanded = !weeklySetsInfoExpanded; renderLiftsTab(); });
+}
+
 const MUSCLE_MAP_WINDOWS = [[7, '7 Days'], [30, '30 Days'], [null, 'All Time']];
 let muscleMapWindow = 7;
 let muscleMapSelectedRegion = null;
@@ -5272,7 +5370,8 @@ function plateStackHtml(weight, barLb = 45) {
 let liftsSelectedExercise = null;
 let liftForm = {
   exercise: '', muscleGroup: '', bodyRegion: '', weight: '', sets: 3,
-  repsPerSet: ['5', '5', '5'], date: localDateStr(), isSuperset: false, supersetGroup: '',
+  repsPerSet: ['5', '5', '5'], warmupPerSet: [false, false, false],
+  date: localDateStr(), isSuperset: false, supersetGroup: '',
 };
 let liftFormError = '';
 let liftFormSaving = false;
@@ -5399,6 +5498,9 @@ function prefillLiftFormFromLast(exercise) {
   liftForm.weight = String(last.weight);
   liftForm.sets = repsPerSet.length;
   liftForm.repsPerSet = repsPerSet.map(String);
+  // Warm-up status never carries over from a previous session's log —
+  // each session's warm-up sets are its own thing to mark fresh.
+  liftForm.warmupPerSet = repsPerSet.map(() => false);
 }
 
 function goalCardHtml(exercise, history, bestE1RM, goal) {
@@ -6203,7 +6305,11 @@ function renderLiftLog(panel) {
       <div class="field">
         <label>Reps per set (can vary set to set)</label>
         <div class="reps-per-set-row" id="liftRepsRow">
-          ${liftForm.repsPerSet.map((r, i) => `<div class="reps-per-set-cell"><span>Set ${i + 1}</span><input class="input mono" type="number" data-rep-idx="${i}" value="${esc(r)}"></div>`).join('')}
+          ${liftForm.repsPerSet.map((r, i) => `<div class="reps-per-set-cell">
+            <span>Set ${i + 1}</span>
+            <input class="input mono" type="number" data-rep-idx="${i}" value="${esc(r)}">
+            <label class="warmup-toggle"><input type="checkbox" data-warmup-idx="${i}" ${liftForm.warmupPerSet[i] ? 'checked' : ''}> warm-up</label>
+          </div>`).join('')}
         </div>
         <div class="muted small" style="margin-top:0.4rem;">Avg: <span class="mono" style="color:var(--accent);">${avgReps(liftForm.repsPerSet.map((r) => Number(r) || 0)).toFixed(1)}</span> reps/set (used for charts) · total ${liftForm.repsPerSet.reduce((s, r) => s + (Number(r) || 0), 0)} reps</div>
       </div>
@@ -6258,6 +6364,7 @@ function renderLiftLog(panel) {
     ${suggestedExercisesHtml(exercises)}
 
     ${todaysFocusHtml()}
+    ${weeklyHardSetsHtml(lifts)}
     ${muscleMapHtml(lifts)}
 
     <div class="stat-grid-2">
@@ -6321,6 +6428,7 @@ function renderLiftLog(panel) {
 
   if (preservedExerciseWrap) $('#liftExerciseWrap', panel)?.replaceWith(preservedExerciseWrap);
   renderLiftExerciseField(panel, allExerciseOptions);
+  wireWeeklyHardSetsEvents(panel);
   wireMuscleMapEvents(panel);
   wireSplitEvents(panel);
   $$('[data-pr-open]', panel).forEach((card) => card.addEventListener('click', () => {
@@ -6338,12 +6446,17 @@ function renderLiftLog(panel) {
     const count = Math.max(1, Math.min(20, Number(e.target.value) || 1));
     const fillVal = liftForm.repsPerSet.length ? liftForm.repsPerSet[liftForm.repsPerSet.length - 1] : '5';
     while (liftForm.repsPerSet.length < count) liftForm.repsPerSet.push(fillVal);
+    while (liftForm.warmupPerSet.length < count) liftForm.warmupPerSet.push(false);
     liftForm.repsPerSet.length = count;
+    liftForm.warmupPerSet.length = count;
     liftForm.sets = count;
     renderLiftsTab();
   });
   $$('[data-rep-idx]', panel).forEach((inp) => inp.addEventListener('input', (e) => {
     liftForm.repsPerSet[Number(e.target.dataset.repIdx)] = e.target.value;
+  }));
+  $$('[data-warmup-idx]', panel).forEach((inp) => inp.addEventListener('change', (e) => {
+    liftForm.warmupPerSet[Number(e.target.dataset.warmupIdx)] = e.target.checked;
   }));
   $('#lift_date').addEventListener('change', (e) => {
     liftForm.date = e.target.value || localDateStr();
@@ -6419,15 +6532,18 @@ async function addLiftFromForm() {
   liftFormSaving = true;
   liftFormError = '';
   renderLiftsTab();
+  const warmupPerSet = liftForm.warmupPerSet.slice(0, repsPerSet.length);
   const { error } = await supabase.from('lifts').insert({
     user_id: state.user.id,
     exercise, muscle_group: muscleGroup, body_region: bodyRegion,
     weight: weightNum, sets: repsPerSet.length, reps_per_set: repsPerSet, reps,
+    warmup_per_set: warmupPerSet.some(Boolean) ? warmupPerSet : [],
     date: liftForm.date, superset_group: liftForm.isSuperset ? (liftForm.supersetGroup.trim() || null) : null,
   });
   liftFormSaving = false;
   if (error) { liftFormError = error.message || 'Failed to save lift.'; renderLiftsTab(); return; }
   liftForm.weight = '';
+  liftForm.warmupPerSet = liftForm.warmupPerSet.map(() => false);
   if (priorBest && weightNum > priorBest.weight) {
     prBanner = { exercise, weight: weightNum, improvement: Math.round((weightNum - priorBest.weight) * 100) / 100 };
   }

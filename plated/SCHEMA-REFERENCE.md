@@ -274,10 +274,19 @@ reps             numeric
 date             date (indexed)
 superset_group   text (optional — bundles entries into one superset/circuit)
 body_region      text (optional — muscle-map region, e.g. 'chest', 'quads')
+warmup_per_set   boolean[] (default '{}' — parallel to reps_per_set; true = that set was a warm-up)
 created_at       timestamptz
 ```
 **Frontend reads/writes:** `exercise, muscle_group, weight, sets,
-reps_per_set, reps, date, superset_group, body_region`
+reps_per_set, reps, date, superset_group, body_region, warmup_per_set`
+
+`warmup_per_set` (added by `supabase-schema-phase19-warmup-sets.sql`) feeds
+the weekly hard-sets-per-muscle feature only — an empty array means no
+sets in that row are flagged, so pre-migration rows and rows where the
+user never touches the warm-up toggle still count every set as working,
+exactly as before this column existed. PR detection, career volume, and
+the muscle map heatmap deliberately still count every set regardless of
+this flag.
 
 Ported from IronLog's own schema as-is — no naming collision with anything
 in Plated's nutrition side.
@@ -686,3 +695,8 @@ For exercise tags and the muscle-map key mapping (adds `movement_type`,
 updates all 75 rows in place — no truncate, since phase17's data is left
 untouched): run **`supabase-schema-phase18-exercise-tags.sql`** against an
 existing live database; fresh installs get it from `reset-schema.sql`.
+
+For warm-up set tracking (adds `lifts.warmup_per_set`, feeding the weekly
+hard-sets-per-muscle feature): run
+**`supabase-schema-phase19-warmup-sets.sql`** against an existing live
+database; fresh installs get it from `reset-schema.sql`.

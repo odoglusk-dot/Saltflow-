@@ -396,6 +396,13 @@ create table lifts (
   -- finer-grained region for the muscle volume map (a later phase),
   -- alongside (not replacing) muscle_group above
   body_region text,
+  -- Parallel to reps_per_set (same length/index alignment) — true where
+  -- that set was a warm-up. Default '{}' means "nothing flagged," so
+  -- every set counts as working, same as before this column existed. See
+  -- supabase-schema-phase19-warmup-sets.sql. Feeds the weekly
+  -- hard-sets-per-muscle feature only; PR detection, career volume, and
+  -- the muscle map heatmap are unchanged and still count every set.
+  warmup_per_set boolean[] not null default '{}',
   created_at timestamptz not null default now()
 );
 
