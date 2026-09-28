@@ -6803,6 +6803,67 @@ function computeSplitDayIndex(split, dateStr) {
   return ((daysSince % n) + n) % n;
 }
 
+// ── Split rationale cards ────────────────────────────────────────────────
+// Static "what is this / who's it for" copy per preset, plus a frequency
+// note computed live from the actual days array — same code path for
+// presets and Custom, so a hand-built rotation gets an honest, specific
+// note ("your split hits Push 1x/week...") instead of generic copy.
+const SPLIT_RATIONALE = {
+  'Push/Pull/Legs': {
+    summary: 'Push/Pull/Legs (PPL) groups training by movement pattern — one day for pushing muscles (chest, shoulders, triceps), one for pulling muscles (back, biceps), one for legs.',
+    suits: 'Suits lifters who want a simple rotation that repeats every 3 days and can be run at anywhere from 3 to 6 days a week.',
+  },
+  'Upper/Lower': {
+    summary: 'Upper/Lower splits training into upper-body and lower-body days, giving each half of the body a dedicated session.',
+    suits: 'Suits lifters training around 4 days a week who want solid frequency per muscle group without a packed daily schedule.',
+  },
+  'Bro Split': {
+    summary: 'A "bro split" dedicates each training day to one body part — chest, back, legs, shoulders, arms — across a 5-day rotation.',
+    suits: 'Suits lifters who enjoy going hard on one muscle group per session and can commit to 5 training days, though it typically means less frequency per muscle than the other presets here.',
+  },
+  'Arnold Split': {
+    summary: 'The Arnold Split pairs opposing muscle groups (chest with back, shoulders with arms) across a 6-day rotation plus a rest day.',
+    suits: 'Suits more experienced lifters ready for a 6-day training week and higher weekly volume per muscle group.',
+  },
+  custom: {
+    summary: 'This is the rotation you built yourself.',
+    suits: 'Custom splits work well once you already have a sense of how often you want to train each muscle group — if you\'re not sure yet, one of the presets above is a safer starting point.',
+  },
+};
+
+// Coarse MUSCLE_GROUPS frequency (Push/Pull/Legs/Core/Full Body/Other) —
+// the same taxonomy split days are already tagged with, not the finer
+// 14-key muscle-map taxonomy used elsewhere, since a split day only
+// carries the coarse tag today.
+function splitMuscleGroupFrequency(days) {
+  const cycleLen = days.length;
+  if (!cycleLen) return {};
+  const counts = {};
+  days.forEach((d) => (d.muscle_groups || []).forEach((mg) => { counts[mg] = (counts[mg] || 0) + 1; }));
+  const freq = {};
+  Object.keys(counts).forEach((mg) => { freq[mg] = (counts[mg] / cycleLen) * 7; });
+  return freq;
+}
+
+function splitRationaleHtml(presetKey, days) {
+  if (!days || !days.length) return '';
+  const info = SPLIT_RATIONALE[presetKey] || SPLIT_RATIONALE.custom;
+  const freq = splitMuscleGroupFrequency(days);
+  const entries = Object.entries(freq);
+  if (!entries.length) return `<div class="card"><p class="muted small" style="margin:0;">${esc(info.summary)} ${esc(info.suits)}</p></div>`;
+  const formatFreq = (f) => `${Math.round(f * 10) / 10}x/week`;
+  const freqParts = entries.map(([mg, f]) => `${mg} ${formatFreq(f)}`).join(', ');
+  const anyOnceOrLess = entries.some(([, f]) => f <= 1.1);
+  const frequencyNote = anyOnceOrLess
+    ? `This rotation hits ${freqParts} on average. Training a muscle group once a week isn't "wrong" — plenty of lifters make good progress that way — but it's less optimal on average than higher frequency.`
+    : `This rotation hits ${freqParts} on average, in line with research on training frequency.`;
+  return `<div class="card">
+    <p style="margin:0;">${esc(info.summary)} ${esc(info.suits)}</p>
+    <p class="muted small" style="margin-top:0.5rem;">${frequencyNote}</p>
+    ${citationBlockHtml('frequency', `frequency:splitrationale:${presetKey}`)}
+  </div>`;
+}
+
 let splitEditorOpen = false;
 let splitEditorPreset = null; // preset name, or 'custom'
 let splitCustomDays = null; // days array being edited
@@ -6838,7 +6899,8 @@ function splitEditorHtml() {
     <button class="btn btn-primary" id="splitSaveBtn">Save split</button>
     ` : ''}
     ${state.trainingSplit ? `<button class="btn btn-ghost" id="splitRemoveBtn" style="margin-left:0.5rem;">Remove split</button>` : ''}
-  </div>`;
+  </div>
+  ${splitEditorPreset ? splitRationaleHtml(splitEditorPreset, splitEditorPreset === 'custom' ? splitCustomDays : SPLIT_PRESETS.find((p) => p.name === splitEditorPreset)?.days) : ''}`;
 }
 
 function todaysFocusHtml() {
