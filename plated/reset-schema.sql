@@ -124,6 +124,11 @@ create table goals (
   -- goals write) — lets the goal-adaptive nudge tell "just changed" from
   -- "has been this way for months." See supabase-schema-phase14-goal-nudges.sql.
   goal_mode_changed_at timestamptz,
+  -- Target bodyweight in lb, optional. Set at onboarding or the Goal
+  -- Calculator; informs the rate-of-change calorie adjustment for
+  -- lose/gain and drives the "X lb to go" indicator on the Weight tab.
+  -- See supabase-schema-phase31-goal-weight.sql.
+  goal_weight_lb numeric,
   updated_at timestamptz not null default now()
 );
 
