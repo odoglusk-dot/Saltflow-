@@ -995,3 +995,22 @@ alongside this (via a new `get-group-leaderboard.js` function) need
 `food_logs`/`lifts`/`exercise_goals`/`group_members.joined_at` data, same
 "never store a derived stat" pattern as every other progress number in
 this app.
+
+For Krafft Athlete Mode (adds `profiles.athlete_mode_enabled`/
+`athlete_mode_unlocked_at`/`athlete_sport`/`athlete_position`/
+`athlete_game_plan`, plus the new `conditioning_log`,
+`athlete_journal_entries`, and `athlete_confidence_entries` tables): run
+**`supabase-schema-phase29-athlete-mode.sql`** against an existing live
+database; fresh installs get it from `reset-schema.sql`. Additive only —
+nutrition tracking, general lifting, the standard Block Builder,
+achievements, and everything else stay exactly as they are. No new
+Netlify function or environment variable — entirely client-side reads/
+writes against the new tables, same RLS-scoped pattern as
+`exercise_goals`.
+
+For Krafft Athlete Mode's plyometric exercise content (10 new rows in
+`exercises`, tagged `functional_athletic`/`power_speed`, filling those
+Block Builder pools for the first time): run
+**`supabase-schema-phase30-plyometric-exercises.sql`** against an
+existing live database; fresh installs get it from `reset-schema.sql`.
+Safe to re-run (`on conflict (name) do nothing`).
