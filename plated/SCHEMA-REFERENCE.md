@@ -979,3 +979,19 @@ live database; fresh installs get it from `reset-schema.sql`. Adds one
 new Netlify function, `update-group-settings.js`, reusing the same
 `SUPABASE_SERVICE_ROLE_KEY` environment variable the other 4 group
 functions already require — no new environment variables.
+
+For Group Mode's shareable invite link (adds `groups.invite_code` and
+`groups.invite_code_expires_at` — any member can generate a 7-day join
+link that doesn't require an existing in-app friendship, unlike
+invite-to-group.js): run **`supabase-schema-phase28-group-invite-link.sql`**
+against an existing live database; fresh installs get it from
+`reset-schema.sql`. Adds two new Netlify functions,
+`generate-group-invite.js` and `join-group-by-code.js`, reusing the same
+`SUPABASE_SERVICE_ROLE_KEY` environment variable the other group
+functions already require — no new environment variables. The within-group
+goal-hit leaderboard and the lift-goal achievement summary shipped
+alongside this (via a new `get-group-leaderboard.js` function) need
+**no schema change at all** — both are computed live from existing
+`food_logs`/`lifts`/`exercise_goals`/`group_members.joined_at` data, same
+"never store a derived stat" pattern as every other progress number in
+this app.

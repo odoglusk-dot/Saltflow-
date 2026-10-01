@@ -454,7 +454,8 @@ create policy "friendships_delete_own" on friendships for delete
 
 -- ── groups / group_members / group_freeze_log / group_goals (Group Mode) ──
 -- One active group per user, built on friendships (not a new social
--- graph) — every invite requires an existing accepted friendship. See
+-- graph) for invite-to-group.js's friend-based invites — a shareable
+-- invite_code (below) is a separate, friend-agnostic join path. See
 -- supabase-schema-phase26-group-mode.sql for the full rationale.
 create table groups (
   id uuid primary key default gen_random_uuid(),
@@ -472,10 +473,19 @@ create table groups (
   last_evaluated_date date,
   last_achievement_check_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
+  -- Shareable join link — any member can (re)generate one, which
+  -- overwrites and invalidates the previous code. 7-day expiry is set by
+  -- generate-group-invite.js at generation time, not a column default.
+  -- See supabase-schema-phase28-group-invite-link.sql for the full
+  -- rationale.
+  invite_code text unique,
+  invite_code_expires_at timestamptz,
   constraint groups_sessions_target_required check (goal_metric != 'sessions' or sessions_target_per_week is not null)
 );
 
 alter table groups enable row level security;
+
+create index groups_invite_code_idx on groups (invite_code);
 
 create table group_members (
   id uuid primary key default gen_random_uuid(),
