@@ -460,12 +460,19 @@ create table groups (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   creator_id uuid not null references auth.users(id) on delete cascade,
+  -- Streak metric, leader-changeable anytime (not locked at creation) via
+  -- update-group-settings.js. 'sessions' is weekly (sessions_target_per_week
+  -- required), unlike 'protein'/'calories' which are daily — see
+  -- supabase-schema-phase27-group-goal-metric.sql for the full rationale.
+  goal_metric text not null default 'protein' check (goal_metric in ('protein', 'calories', 'sessions')),
+  sessions_target_per_week int check (sessions_target_per_week is null or (sessions_target_per_week between 1 and 14)),
   current_streak int not null default 0,
   best_streak int not null default 0,
   freezes_available int not null default 0,
   last_evaluated_date date,
   last_achievement_check_at timestamptz not null default now(),
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  constraint groups_sessions_target_required check (goal_metric != 'sessions' or sessions_target_per_week is not null)
 );
 
 alter table groups enable row level security;

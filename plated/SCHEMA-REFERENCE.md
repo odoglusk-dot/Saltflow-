@@ -941,6 +941,12 @@ Netlify function or environment variable — the whole feature is
 client-side generation plus one jsonb column, written directly from the
 browser the same way `learning_paths_completed` is.
 
+For weight-unit preference and leaderboard opt-in (adds
+`profiles.weight_unit` and `profiles.leaderboard_opt_in`): run
+**`supabase-schema-phase24-unit-and-leaderboard-prefs.sql`** against an
+existing live database; fresh installs get it from `reset-schema.sql`.
+No new Netlify function or environment variable.
+
 For the optional Workout Plan Builder (adds the new `plans` table, sitting
 above Block Builder): run **`supabase-schema-phase25-plan-builder.sql`**
 against an existing live database; fresh installs get it from
@@ -963,3 +969,13 @@ reminder emails already require — no new environment variables, but both
 of those must already be configured for group notification emails and
 the daily streak evaluation to actually run (both no-op safely, same as
 `send-reminder-emails.js` does today, if either key is missing).
+
+For Group Mode's selectable streak metric (adds `groups.goal_metric` and
+`groups.sessions_target_per_week` — the group's leader can choose
+protein, calories, or a weekly training-session target instead of the
+original protein-only streak, changeable anytime from the Group tab): run
+**`supabase-schema-phase27-group-goal-metric.sql`** against an existing
+live database; fresh installs get it from `reset-schema.sql`. Adds one
+new Netlify function, `update-group-settings.js`, reusing the same
+`SUPABASE_SERVICE_ROLE_KEY` environment variable the other 4 group
+functions already require — no new environment variables.
