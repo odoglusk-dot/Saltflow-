@@ -7012,7 +7012,7 @@ let expandedLiftExercises = new Set();
 // which individual rows inside it (above) are expanded — defaults open.
 let liftExercisesSectionExpanded = true;
 let liftForm = {
-  exercise: '', muscleGroup: '', bodyRegion: '', weight: '', sets: 3,
+  exercise: '', bodyRegion: '', weight: '', sets: 3,
   repsPerSet: ['5', '5', '5'], warmupPerSet: [false, false, false],
   date: localDateStr(), isSuperset: false, supersetGroup: '',
   // Which Weekly Training Volume / Muscle Map muscles this specific lift
@@ -7536,7 +7536,6 @@ function drawLiftAutocompleteDropdown(wrap) {
     const val = item.dataset.acSelect;
     liftForm.exercise = val;
     liftAutocompleteOpen = false;
-    liftForm.muscleGroup = exerciseDefFor(val)?.muscle_group || DEFAULT_MUSCLE_GROUP[val] || liftForm.muscleGroup || '';
     liftForm.bodyRegion = exerciseDefFor(val)?.body_region || DEFAULT_BODY_REGION[val] || liftForm.bodyRegion || '';
     liftForm.muscleMapKeys = defaultMuscleMapKeysFor(exerciseDefFor(val));
     prefillLiftFormFromLast(val);
@@ -8116,19 +8115,11 @@ function renderLiftLog(panel) {
       </div>
       <div class="field autocomplete-wrap" id="liftExerciseWrap"></div>
       ${liftForm.exercise ? `
-      <div class="row">
-        <div class="field"><label>Muscle group</label>
-          <select id="lift_muscleGroup">
-            <option value="">Muscle group…</option>
-            ${MUSCLE_GROUPS.map((m) => `<option value="${m}" ${liftForm.muscleGroup === m ? 'selected' : ''}>${m}</option>`).join('')}
-          </select>
-        </div>
-        <div class="field"><label>Body region (for map)</label>
-          <select id="lift_bodyRegion">
-            <option value="">Body region…</option>
-            ${BODY_REGIONS.map((r) => `<option value="${r}" ${liftForm.bodyRegion === r ? 'selected' : ''}>${BODY_REGION_LABELS[r]}</option>`).join('')}
-          </select>
-        </div>
+      <div class="field"><label>Body region (for map)</label>
+        <select id="lift_bodyRegion">
+          <option value="">Body region…</option>
+          ${BODY_REGIONS.map((r) => `<option value="${r}" ${liftForm.bodyRegion === r ? 'selected' : ''}>${BODY_REGION_LABELS[r]}</option>`).join('')}
+        </select>
       </div>
       <div class="field">
         <label>Muscles worked <span class="muted">(optional — feeds Weekly Training Volume &amp; the Muscle Map)</span></label>
@@ -8323,8 +8314,6 @@ function renderLiftLog(panel) {
     goalCardEditing = false;
     renderLiftsTab();
   }));
-  const mgSel = $('#lift_muscleGroup');
-  if (mgSel) mgSel.addEventListener('change', (e) => { liftForm.muscleGroup = e.target.value; });
   const brSel = $('#lift_bodyRegion');
   if (brSel) brSel.addEventListener('change', (e) => { liftForm.bodyRegion = e.target.value; });
   $$('[data-lift-muscle-map-key]', panel).forEach((btn) => btn.addEventListener('click', () => {
@@ -8448,7 +8437,6 @@ function renderLiftLog(panel) {
   $$('[data-suggest-exercise]', panel).forEach((btn) => btn.addEventListener('click', () => {
     const val = btn.dataset.suggestExercise;
     liftForm.exercise = val;
-    liftForm.muscleGroup = exerciseDefFor(val)?.muscle_group || DEFAULT_MUSCLE_GROUP[val] || '';
     liftForm.bodyRegion = exerciseDefFor(val)?.body_region || DEFAULT_BODY_REGION[val] || '';
     liftForm.muscleMapKeys = defaultMuscleMapKeysFor(exerciseDefFor(val));
     prefillLiftFormFromLast(val);
@@ -8468,7 +8456,12 @@ async function addLiftFromForm() {
   if (!exercise || !liftForm.weight || repsPerSet.length === 0) return;
   if (liftForm.isSuperset && !liftForm.supersetGroup.trim()) return;
   const exerciseDef = exerciseDefFor(exercise);
-  const muscleGroup = liftForm.muscleGroup || exerciseDef?.muscle_group || DEFAULT_MUSCLE_GROUP[exercise] || 'Other';
+  // Item 3 of the personalization batch: category is inferred automatically
+  // from the exercise library — no manual Push/Pull/Other select anymore.
+  // An exercise not in the library (custom/unmatched name) and not in the
+  // small DEFAULT_MUSCLE_GROUP fallback logs with no category tag at all,
+  // rather than blocking the log or defaulting to a meaningless 'Other'.
+  const muscleGroup = exerciseDef?.muscle_group || DEFAULT_MUSCLE_GROUP[exercise] || null;
   const bodyRegion = liftForm.bodyRegion || exerciseDef?.body_region || null;
   const reps = Math.round(avgReps(repsPerSet) * 10) / 10;
   const weightNum = fromDisplayWeight(liftForm.weight);
@@ -11337,6 +11330,12 @@ const CONDITIONING_DRILLS = [
   { key: 'cone_drill', name: 'Cone Drill (e.g. 5-10-5 Shuttle)', description: 'A timed cone pattern — builds change-of-direction speed and body control.', metricType: 'time', tags: ['agility', 'lateral'] },
   { key: 'ladder_drill', name: 'Agility Ladder', description: 'Footwork patterns through a ladder — builds foot speed and coordination, not top-end speed.', metricType: 'completion', tags: ['agility'] },
   { key: 'change_of_direction', name: 'Change-of-Direction Drill (e.g. T-Drill)', description: 'A timed cut-and-accelerate pattern — builds the deceleration and re-acceleration sport actually demands.', metricType: 'time', tags: ['agility', 'reactive'] },
+  // Phase 37: steady-state/interval conditioning machines — timed, not
+  // distance or completion-based, same conditioning_log mechanism.
+  { key: 'rowing_machine', name: 'Rowing Machine', description: 'Steady-state or interval rowing — builds aerobic capacity with full-body pulling volume.', metricType: 'time', tags: ['endurance'] },
+  { key: 'assault_bike', name: 'Assault Bike', description: 'Steady-state or sprint-interval fan bike work — builds conditioning with both arms and legs driving the effort.', metricType: 'time', tags: ['endurance'] },
+  { key: 'stair_climber', name: 'Stair Climber', description: 'Continuous stepping work — builds lower-body conditioning and aerobic capacity.', metricType: 'time', tags: ['endurance'] },
+  { key: 'incline_treadmill_walk', name: 'Incline Treadmill Walk', description: 'Brisk walking at a sustained incline — a low-impact way to build steady cardio volume.', metricType: 'time', tags: ['endurance'] },
 ];
 function conditioningDrillByKey(key) { return CONDITIONING_DRILLS.find((d) => d.key === key) || CONDITIONING_DRILLS[0]; }
 
