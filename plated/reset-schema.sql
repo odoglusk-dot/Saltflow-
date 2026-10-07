@@ -98,6 +98,14 @@ create table profiles (
   -- supabase-schema-phase34-streak-upgrade-prompts.sql.
   streak_upgrade_prompt_shown_at timestamptz,
   pro_preview_used_at timestamptz,
+  -- Pro-only Home screen personalization — see supabase-schema-phase38-
+  -- home-customization.sql. home_background_path points into the
+  -- home-backgrounds storage bucket (same private/folder-per-user pattern
+  -- as progress-photos); null means "use the default hero background."
+  -- home_widget_order is a permutation of DEFAULT_HOME_WIDGET_ORDER's keys
+  -- (index.html); null/missing keys fall back to default placement.
+  home_background_path text,
+  home_widget_order text[],
   created_at timestamptz not null default now()
 );
 
@@ -807,6 +815,24 @@ create policy "food_photos_insert_own" on storage.objects for insert
 
 create policy "food_photos_delete_own" on storage.objects for delete
   using (bucket_id = 'food-photos' and auth.uid()::text = (storage.foldername(name))[1]);
+
+-- ── home-backgrounds storage bucket (Pro-only Home screen personalization) ──
+-- Same private/folder-per-user pattern as progress-photos and food-photos.
+-- One background per user at a time: a new upload replaces the old object
+-- client-side (delete-then-insert), and profiles.home_background_path
+-- tracks the current path. See supabase-schema-phase38-home-customization.sql.
+insert into storage.buckets (id, name, public)
+values ('home-backgrounds', 'home-backgrounds', false)
+on conflict (id) do nothing;
+
+create policy "home_backgrounds_select_own" on storage.objects for select
+  using (bucket_id = 'home-backgrounds' and auth.uid()::text = (storage.foldername(name))[1]);
+
+create policy "home_backgrounds_insert_own" on storage.objects for insert
+  with check (bucket_id = 'home-backgrounds' and auth.uid()::text = (storage.foldername(name))[1]);
+
+create policy "home_backgrounds_delete_own" on storage.objects for delete
+  using (bucket_id = 'home-backgrounds' and auth.uid()::text = (storage.foldername(name))[1]);
 
 -- ── training_splits ──────────────────────────────────────────────────
 -- One active split per user — a preset or custom weekly rotation used to
